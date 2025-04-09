@@ -1,7 +1,11 @@
 from flask import Flask, request, jsonify
 import os
+import openai
 
 app = Flask(__name__)
+
+# 🔐 Sua chave da OpenAI
+openai.api_key = "sk-...sua-chave-aqui..."
 
 bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
@@ -17,7 +21,6 @@ def detectar_assunto(msg):
 
 @app.route('/webhook', methods=['POST'])
 def responder():
-
     data = request.get_json()
 
     nome = data.get("senderName", "")
@@ -34,17 +37,17 @@ def responder():
     tipo = detectar_assunto(mensagem)
 
     if tipo == "profissional":
-        if "atendimento" in mensagem or "consulta" in mensagem:
-            resposta = "Oi! Claro que podemos te atender. Você prefere presencial ou online? Me diz o melhor horário que verifico a agenda. 😉"
-        elif "processo" in mensagem:
-            resposta = "Vamos verificar com nossa equipe jurídica e te dar um retorno completo. Você prefere que liguemos ou prefere agendar um horário presencial?"
-        elif "holding" in mensagem or "contrato" in mensagem:
-            resposta = "Posso te orientar com base na legislação, sim. Mas cada caso é único. Quer que eu mande um material ou agendamos uma conversa com um especialista?"
-        else:
-            resposta = "Podemos sim te ajudar com isso. Você prefere conversar por aqui ou quer agendar um atendimento?"
-        return jsonify({"response": resposta})
-    else:
-        return jsonify({"response": None})
+        # 🔁 Chamar a OpenAI para responder
+        try:
+            completion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "Você é um assistente jurídico simpático e eficiente."},
+                    {"role": "user", "content": mensagem}
+                ]
+            )
+            resposta = completion.choices[0].message.content
+        except Exception as e:
+            resposta = "Desculpe, houve um erro ao processar sua solicitação. Tente novamente mais tarde."
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+        return jsonify({"response": resposta
