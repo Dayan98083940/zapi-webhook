@@ -7,7 +7,12 @@ bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
 def detectar_assunto(msg):
-    profissionais = ["contrato", "holding", "divórcio", "herança", "inventário", "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"]
+    if not msg:
+        return "particular"
+    profissionais = [
+        "contrato", "holding", "divórcio", "herança", "inventário",
+        "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"
+    ]
     msg = msg.lower()
     for termo in profissionais:
         if termo in msg:
@@ -25,8 +30,11 @@ def responder():
     if nome in bloqueados or grupo in grupos_bloqueados:
         return jsonify({"response": None})
 
-    if historico > 1:
-        return jsonify({"response": None})
+    try:
+        if int(historico) > 1:
+            return jsonify({"response": None})
+    except (TypeError, ValueError):
+        pass
 
     tipo = detectar_assunto(mensagem)
     if tipo == "profissional":
