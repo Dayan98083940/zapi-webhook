@@ -26,7 +26,7 @@ def responder():
         return jsonify({"response": None})
 
     if historico > 1:
-        return jsonify({"response": None})
+        if historico is not None and historico > 1:
 
     tipo = detectar_assunto(mensagem)
     if tipo == "profissional":
