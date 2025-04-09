@@ -7,36 +7,31 @@ bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
 def detectar_assunto(msg):
-    if not msg:
-        return "particular"
-    profissionais = [
-        "contrato", "holding", "divórcio", "herança", "inventário",
-        "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"
-    ]
-    msg = msg.lower()
-    for termo in profissionais:
-        if termo in msg:
-            return "profissional"
+    profissionais = ["contrato", "holding", "divórcio", "herança", "inventário", "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"]
+    if msg:
+        msg = msg.lower()
+        for termo in profissionais:
+            if termo in msg:
+                return "profissional"
     return "particular"
 
 @app.route('/webhook', methods=['POST'])
 def responder():
-    data = request.json
-    nome = data.get("senderName")
-    grupo = data.get("groupName")
-    mensagem = data.get("message")
-    historico = data.get("messageCount")
+    data = request.get_json()
+
+    nome = data.get("senderName", "")
+    grupo = data.get("groupName", "")
+    mensagem = data.get("message", "")
+    historico = data.get("messageCount", 0)
 
     if nome in bloqueados or grupo in grupos_bloqueados:
         return jsonify({"response": None})
 
-    try:
-        if int(historico) > 1:
-            return jsonify({"response": None})
-    except (TypeError, ValueError):
-        pass
+    if historico and historico > 1:
+        return jsonify({"response": None})
 
     tipo = detectar_assunto(mensagem)
+
     if tipo == "profissional":
         if "atendimento" in mensagem or "consulta" in mensagem:
             resposta = "Oi! Claro que podemos te atender. Você prefere presencial ou online? Me diz o melhor horário que verifico a agenda. 😉"
