@@ -1,36 +1,37 @@
 from flask import Flask, request, jsonify
-import os
 import openai
+import os
 
 app = Flask(__name__)
+
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
 def detectar_assunto(msg):
+    profissionais = ["contrato", "holding", "divórcio", "herança", "inventário", "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"]
     if msg:
-        termos = ["contrato", "holding", "divórcio", "herança", "inventário", "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"]
         msg = msg.lower()
-        for termo in termos:
+        for termo in profissionais:
             if termo in msg:
                 return "profissional"
     return "particular"
 
-def gerar_resposta_com_openai(pergunta):
+def gerar_resposta_chatgpt(mensagem):
     try:
-        resposta = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Você é um assistente jurídico educado e objetivo, representando o escritório Teixeira.Brito Advogados."},
-                {"role": "user", "content": pergunta}
+                {"role": "system", "content": "Você é um assistente jurídico simpático, objetivo e informativo."},
+                {"role": "user", "content": mensagem}
             ]
         )
-        return resposta.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        return "Desculpe, não consegui gerar uma resposta agora. Tente novamente mais tarde."
+        return "Desculpe, tivemos um erro ao gerar resposta."
 
-@app.route("/webhook", methods=["POST"])
+@app.route('/webhook', methods=['POST'])
 def responder():
     data = request.get_json()
 
@@ -45,11 +46,13 @@ def responder():
     if historico and historico > 1:
         return jsonify({"response": None})
 
-    if detectar_assunto(mensagem) == "profissional":
-        resposta = gerar_resposta_com_openai(mensagem)
+    tipo = detectar_assunto(mensagem)
+
+    if tipo == "profissional":
+        resposta = gerar_resposta_chatgpt(mensagem)
         return jsonify({"response": resposta})
     else:
         return jsonify({"response": None})
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
