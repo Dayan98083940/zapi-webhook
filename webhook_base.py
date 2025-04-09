@@ -17,6 +17,7 @@ def detectar_assunto(msg):
 
 @app.route('/webhook', methods=['POST'])
 def responder():
+
     data = request.get_json()
 
     nome = data.get("senderName", "")
