@@ -25,8 +25,8 @@ def responder():
     if nome in bloqueados or grupo in grupos_bloqueados:
         return jsonify({"response": None})
 
-    if historico > 1:
-        if historico is not None and historico > 1:
+    if historico is not None and historico > 1:
+    return jsonify({"response": None})
 
     tipo = detectar_assunto(mensagem)
     if tipo == "profissional":
