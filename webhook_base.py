@@ -1,15 +1,16 @@
 from flask import Flask, request, jsonify
 from datetime import datetime
 import requests
-import fitz  # PyMuPDF para extrair texto de PDF
+import fitz  # PyMuPDF
 import openai
 import os
 
 app = Flask(__name__)
 
-# --- CONFIGURAÇÕES ---
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Certifique-se de definir no Render ou .env
+# 🔐 Configure sua chave da OpenAI via variável de ambiente ou diretamente aqui
+openai.api_key = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI_AQUI"
 
+# 📅 Horário comercial
 HORARIOS = {
     "manha_inicio": 8,
     "manha_fim": 12,
@@ -17,11 +18,11 @@ HORARIOS = {
     "tarde_fim": 18
 }
 
+# 📍 Endereço e Calendly
 ENDERECO = "Avenida C-5, Quadra 8, Lote 8, nº 504, Jardim América, Goiânia/GO, CEP 74265-050"
 LINK_CALENDLY = "https://calendly.com/daan-advgoias"
 
-# --- FUNÇÕES ---
-
+# 🔍 Função de horário
 def horario_comercial():
     agora = datetime.now()
     hora = agora.hour
@@ -30,6 +31,7 @@ def horario_comercial():
         or HORARIOS["tarde_inicio"] <= hora < HORARIOS["tarde_fim"]
     )
 
+# 📥 Extrair texto de PDF
 def extrair_texto_pdf(url_arquivo):
     response = requests.get(url_arquivo)
     with open("temp.pdf", "wb") as f:
@@ -41,6 +43,7 @@ def extrair_texto_pdf(url_arquivo):
     doc.close()
     return texto
 
+# 🧠 Gerar resumo técnico com IA
 def gerar_resumo_conteudo(texto, tipo="contrato"):
     prompt_base = {
         "contrato": "Você é um advogado especialista. Leia o contrato abaixo e gere um resumo técnico, destacando riscos jurídicos, cláusulas sensíveis e pontos que exigem atenção. Seja direto, sem linguagem genérica.",
@@ -55,16 +58,21 @@ def gerar_resumo_conteudo(texto, tipo="contrato"):
     )
     return resposta.choices[0].message.content.strip()
 
-# --- WEBHOOK ---
-
+# 🧩 Webhook
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
+    print("🔍 JSON recebido:", data)
+
     mensagem = data.get("message", "").lower()
     nome = data.get("senderName", "Cliente")
-    anexo_url = data.get("fileUrl")  # A Z-API precisa enviar isso se houver anexo
+    
+    # 📎 Detectar se tem anexo PDF
+    anexo_url = None
+    if "media" in data and isinstance(data["media"], list) and data["media"]:
+        anexo_url = data["media"][0].get("url")
 
-    # --- AGENDA ---
+    # 🗓️ Agendamento
     if any(p in mensagem for p in ["quero agendar", "quero marcar", "preciso marcar", "agendar reunião"]):
         if not horario_comercial():
             resposta = f"Olá, {nome}! Atendemos em horário comercial (08h–12h / 14h–18h). Posso registrar sua solicitação e te retornar no primeiro horário disponível."
@@ -92,7 +100,7 @@ def webhook():
             )
         })
 
-    # --- ANÁLISE DE CONTRATO / PROCESSO ---
+    # 📄 Análise de Contrato / Processo
     if any(p in mensagem for p in [
         "analisa esse contrato", "analise esse contrato", "analisar contrato",
         "dá uma olhada nesse contrato", "analisa esse processo", "analise esse processo"
@@ -112,13 +120,13 @@ def webhook():
         else:
             resposta = (
                 "Parece que você mencionou análise de contrato ou processo, mas não enviou o arquivo. "
-                "Pode mandar em PDF ou imagem que farei a análise preliminar para você."
+                "Pode mandar em PDF que farei a análise preliminar para você."
             )
         return jsonify({"response": resposta})
 
-    # --- RESPOSTA PADRÃO ---
+    # 🧾 Resposta padrão
     return jsonify({"response": "Recebido! Já estou processando sua mensagem. Em breve você terá um retorno do Dr. Dayan ou de nossa equipe."})
 
-# --- EXECUÇÃO LOCAL (caso teste) ---
+# 🔄 Executar localmente
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=10000)
