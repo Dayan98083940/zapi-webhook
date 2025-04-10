@@ -7,7 +7,7 @@ import os
 app = Flask(__name__)
 
 # === CONFIGURAÇÕES ===
-ZAPI_TOKEN = "61919ECA32B76ED6ABDAE637"  # ⚠️ Atenção: coloque aqui seu token da Z-API
+ZAPI_TOKEN = "32EF0706F060E25B5CE884CC"
 ZAPI_URL = f"https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1/token/{ZAPI_TOKEN}/send-text"
 openai.api_key = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI"
 
