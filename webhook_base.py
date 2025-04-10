@@ -9,13 +9,8 @@ app = Flask(__name__)
 # === CONFIGURAÇÕES ===
 ZAPI_INSTANCE_ID = "3DF715E26F0310B41D118E66062CE0C1"
 ZAPI_TOKEN = "32EF0706F060E25B5CE884CC"
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-message"
 openai.api_key = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI"
-
-# === ROTA PADRÃO PARA TESTES ===
-@app.route("/")
-def home():
-    return "Webhook Z-API rodando com sucesso."
 
 # === FUNÇÃO: Enviar resposta via Z-API ===
 def enviar_resposta(numero, resposta):
@@ -130,8 +125,3 @@ def webhook():
     except Exception as e:
         print("❌ Erro geral:", str(e))
         return jsonify({"erro": str(e)})
-
-# === EXECUÇÃO ===
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
