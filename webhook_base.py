@@ -10,7 +10,7 @@ app = Flask(__name__)
 # Variáveis de ambiente/configuração
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
@@ -119,7 +119,7 @@ def enviar_resposta(numero, mensagem):
     }
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {ZAPI_TOKEN}"
+        "Client-Token": ZAPI_TOKEN
     }
 
     try:
