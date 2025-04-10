@@ -1,16 +1,18 @@
+# webhook_base.py
 from flask import Flask, request, jsonify
 import requests
 import fitz  # PyMuPDF
 import openai
 import os
 
-app = Flask(__name__)
-
 # === CONFIGURAÇÕES ===
 ZAPI_INSTANCE_ID = "3DF715E26F0310B41D118E66062CE0C1"
 ZAPI_TOKEN = "32EF0706F060E25B5CE884CC"
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-message"
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
+
 openai.api_key = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI"
+
+app = Flask(__name__)
 
 # === FUNÇÃO: Enviar resposta via Z-API ===
 def enviar_resposta(numero, resposta):
