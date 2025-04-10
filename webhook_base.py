@@ -12,7 +12,7 @@ ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID", "3DF715E26F0310B41D118E66062CE0
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "32EF0706F060E25B5CE884CC")
 ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # Dicionário de histórico temporário de interações
 HISTORICO_CLIENTES = {}
@@ -51,7 +51,7 @@ def webhook():
         participant = data.get("participantPhone")
 
         if not from_me and text_message and phone:
-            # Em grupos, só interage se a mensagem for para mim
+            # Em grupos, só interage se a mensagem for diretamente para mim
             if is_group and (participant != NUMERO_DIRETO and NUMERO_DIRETO not in text_message):
                 return "", 200
 
@@ -85,7 +85,7 @@ def analisar_mensagem(texto):
     prompt = PROMPT_BASE.format(mensagem=texto.strip())
 
     try:
-        resposta = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "Você é um assistente jurídico experiente."},
@@ -94,7 +94,7 @@ def analisar_mensagem(texto):
             max_tokens=500,
             temperature=0.7
         )
-        return resposta.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
 
     except Exception as e:
         print("Erro ao gerar resposta com OpenAI:", str(e))
@@ -119,7 +119,8 @@ def enviar_resposta(numero, mensagem):
     }
 
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Client-Token": ZAPI_TOKEN
     }
 
     try:
