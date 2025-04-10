@@ -7,16 +7,16 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Configuração de ambiente
-ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID", "3DF715E26F0310B41D118E66062CE0C1")
-ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "32EF0706F060E25B5CE884CC")
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
-
+# Variáveis de ambiente/configuração
+ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-NUMERO_DIRETO = "556299812069"
+# Histórico para controle de repetição
 HISTORICO_CLIENTES = {}
+NUMERO_DIRETO = "556299812069"
 
 PROMPT_BASE = """
 Você é um assistente jurídico que trabalha para o escritório Teixeira.Brito Advogados, liderado pelo Dr. Dayan, especialista em contratos, sucessões, holding e renegociação de dívidas.
@@ -37,8 +37,8 @@ Responda como se você fosse o próprio Dr. Dayan ou seu assistente jurídico.
 """
 
 @app.route("/", methods=["GET"])
-def home():
-    return "Webhook ZAPI online com sucesso.", 200
+def health_check():
+    return "Webhook Z-API rodando.", 200
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -48,12 +48,11 @@ def webhook():
     try:
         phone = data.get("participantPhone") or data.get("phone", "")
         from_me = data.get("fromMe", False)
+        text_message = data.get("text", {}).get("message")
         is_group = data.get("isGroup", False)
-        text_message = data.get("text", {}).get("message", "")
         participant = data.get("participantPhone")
 
         if not from_me and text_message and phone:
-            # Grupos: só responde se for mencionado ou for para o número direto
             if is_group and (participant != NUMERO_DIRETO and NUMERO_DIRETO not in text_message):
                 return "", 200
 
@@ -65,11 +64,10 @@ def webhook():
             if resposta:
                 if precisa_atendimento_humano(phone, text_message):
                     resposta += "\n\n📣 Encaminhei sua solicitação para nosso atendimento humanizado. Em breve você receberá retorno."
-
                 enviar_resposta(phone, resposta)
 
     except Exception as e:
-        print("❌ Erro ao processar webhook:", str(e))
+        print("❌ Erro ao processar mensagem:", str(e))
 
     return "", 200
 
@@ -80,7 +78,7 @@ def comando_direto(msg):
     comandos = {
         "#contrato": "Por favor, envie o contrato em PDF ou nos diga do que ele trata.",
         "#agendar": "Você pode agendar um horário com o Dr. Dayan pelo link: https://calendly.com/daan-advgoias",
-        "#valores": "Nossos honorários são personalizados conforme a complexidade do caso. Podemos analisar sua situação e te responder com clareza. Envie mais detalhes."
+        "#valores": "Nossos honorários são personalizados conforme a complexidade do caso. Envie mais detalhes para análise."
     }
     return comandos.get(msg.strip().lower(), "Comando não reconhecido. Por favor, envie sua dúvida ou solicitação.")
 
@@ -88,7 +86,7 @@ def analisar_mensagem(texto):
     prompt = PROMPT_BASE.format(mensagem=texto.strip())
 
     try:
-        resposta = client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "Você é um assistente jurídico experiente."},
@@ -97,10 +95,10 @@ def analisar_mensagem(texto):
             max_tokens=500,
             temperature=0.7
         )
-        return resposta.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
 
     except Exception as e:
-        print("❌ Erro ao consultar OpenAI:", str(e))
+        print("❌ Erro ao gerar resposta com OpenAI:", str(e))
         return "Recebi sua mensagem, mas ainda não consegui interpretar totalmente. Em breve, nossa equipe entrará em contato para atendimento personalizado."
 
 def precisa_atendimento_humano(numero, msg):
@@ -112,7 +110,6 @@ def precisa_atendimento_humano(numero, msg):
         historico["ultima"] = msg.strip().lower()
     historico["hora"] = datetime.now()
     HISTORICO_CLIENTES[numero] = historico
-
     return historico["repeticoes"] >= 2
 
 def enviar_resposta(numero, mensagem):
@@ -120,7 +117,6 @@ def enviar_resposta(numero, mensagem):
         "phone": numero,
         "message": mensagem
     }
-
     headers = {
         "Content-Type": "application/json",
         "Client-Token": ZAPI_TOKEN
@@ -133,7 +129,7 @@ def enviar_resposta(numero, mensagem):
         print("Status Z-API:", response.status_code)
         print("Retorno Z-API:", response.text)
     except Exception as e:
-        print("❌ Erro ao enviar resposta pela Z-API:", str(e))
+        print("❌ Erro ao enviar mensagem:", str(e))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
