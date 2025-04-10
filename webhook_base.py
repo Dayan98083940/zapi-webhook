@@ -11,7 +11,7 @@ ZAPI_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1/toke
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI_AQUI"
 openai.api_key = OPENAI_API_KEY
 
-# === FUNÇÃO: Envia mensagem via Z-API ===
+# === ENVIA RESPOSTA VIA Z-API ===
 def enviar_resposta(numero, resposta):
     payload = {
         "phone": numero,
@@ -20,12 +20,15 @@ def enviar_resposta(numero, resposta):
     headers = {
         "Content-Type": "application/json"
     }
-    res = requests.post(ZAPI_URL, json=payload, headers=headers)
 
-    print(f"⏩ Enviando para {numero}:\n{resposta}")
-    print("🔁 Retorno da Z-API:", res.status_code, res.text)
+    try:
+        res = requests.post(ZAPI_URL, json=payload, headers=headers)
+        print(f"⏩ Respondendo para {numero}:\n{resposta}")
+        print("🔁 Retorno da Z-API:", res.status_code, res.text)
+    except Exception as e:
+        print("❌ Erro ao enviar resposta:", str(e))
 
-# === FUNÇÃO: Analisa PDF ===
+# === ANALISA PDF COM OPENAI ===
 def analisar_pdf_por_url(url):
     try:
         res = requests.get(url)
@@ -62,19 +65,19 @@ def analisar_pdf_por_url(url):
     except Exception as e:
         return f"Ocorreu um erro na análise do PDF: {str(e)}"
 
-# === ROTA DO WEBHOOK ===
+# === WEBHOOK PRINCIPAL ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
         data = request.json
-        message_type = data["messages"][0]["type"]
-        phone_id = data["messages"][0]["from"]
-        numero = phone_id.split("@")[0]
+        msg = data["messages"][0]
+        tipo = msg.get("type")
+        numero = msg.get("from", "").split("@")[0]
 
-        if message_type == "text":
-            mensagem = data["messages"][0]["text"]["body"].strip().lower()
+        if tipo == "text":
+            texto = msg["text"]["body"].strip().lower()
 
-            if mensagem in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
+            if texto in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
                 resposta = (
                     "Olá! Seja bem-vindo ao Teixeira.Brito Advogados.\n"
                     "Sou o assistente do Dr. Dayan. Posso te ajudar com:\n\n"
@@ -84,21 +87,21 @@ def webhook():
                     "4️⃣ Outro assunto\n\n"
                     "Digite o número da opção desejada."
                 )
-            elif mensagem == "1" or "contrato" in mensagem:
+            elif texto == "1" or "contrato" in texto:
                 resposta = "Perfeito. Envie o contrato em PDF aqui mesmo que farei a análise para você."
-            elif mensagem == "2" or "processo" in mensagem:
+            elif texto == "2" or "processo" in texto:
                 resposta = "Tudo certo. Me envie o número ou arquivo do processo que deseja que eu analise."
-            elif mensagem == "3":
+            elif texto == "3":
                 resposta = "📅 Para agendar com Dr. Dayan, acesse: https://calendly.com/daan-advgoias"
-            elif mensagem == "4" or "outro" in mensagem:
+            elif texto == "4" or "outro" in texto:
                 resposta = "Claro. Me explique com clareza o que você precisa para que eu possa te ajudar melhor."
             else:
                 resposta = "Recebi sua mensagem. Pode me dar mais detalhes sobre o que você precisa?"
 
             enviar_resposta(numero, resposta)
 
-        elif message_type == "document":
-            doc = data["messages"][0]["document"]
+        elif tipo == "document":
+            doc = msg["document"]
             mime = doc.get("mime_type", "")
             url = doc.get("url")
 
@@ -115,10 +118,10 @@ def webhook():
         return jsonify({"status": "ok"})
 
     except Exception as e:
-        print("❌ Erro:", str(e))
+        print("❌ Erro geral:", str(e))
         return jsonify({"erro": str(e)})
 
-# === RODAR LOCAL OU NA RENDER ===
+# === EXECUÇÃO LOCAL OU RENDER ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
