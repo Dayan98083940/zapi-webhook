@@ -1,18 +1,17 @@
-# webhook_base.py
 from flask import Flask, request, jsonify
 import requests
 import fitz  # PyMuPDF
 import openai
 import os
 
+app = Flask(__name__)
+
 # === CONFIGURAÇÕES ===
 ZAPI_INSTANCE_ID = "3DF715E26F0310B41D118E66062CE0C1"
 ZAPI_TOKEN = "32EF0706F060E25B5CE884CC"
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
-
-openai.api_key = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI"
-
-app = Flask(__name__)
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+OPENAI_KEY = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI"
+openai.api_key = OPENAI_KEY
 
 # === FUNÇÃO: Enviar resposta via Z-API ===
 def enviar_resposta(numero, resposta):
@@ -26,14 +25,14 @@ def enviar_resposta(numero, resposta):
     }
     try:
         r = requests.post(ZAPI_URL, json=payload, headers=headers)
-        print(f"\n📣 [ENVIAR] Para: {numero}")
-        print("📝 Mensagem:", resposta)
-        print("🔁 Status Z-API:", r.status_code)
-        print("📩 Retorno Z-API:", r.text)
+        print(f"\n[ENVIANDO] Para: {numero}")
+        print("Mensagem:", resposta)
+        print("Status Z-API:", r.status_code)
+        print("Retorno Z-API:", r.text)
     except Exception as e:
-        print("❌ Erro ao enviar resposta:", str(e))
+        print("Erro ao enviar resposta:", str(e))
 
-# === FUNÇÃO: Análise de PDF via URL ===
+# === FUNÇÃO: Analisar PDF por URL ===
 def analisar_pdf_por_url(url):
     try:
         res = requests.get(url)
@@ -48,7 +47,7 @@ def analisar_pdf_por_url(url):
         doc.close()
 
         if not texto.strip():
-            return "O documento parece estar em branco ou ilegível."
+            return "O documento está em branco ou ilegível."
 
         prompt = (
             "Você é um advogado técnico e direto. Analise o conteúdo abaixo e gere um resumo jurídico no estilo Dayan Teixeira. "
@@ -78,31 +77,26 @@ def webhook():
         tipo = msg.get("type")
         numero = msg.get("from", "").split("@")[0]
 
-        print("🔍 JSON recebido:", data)
+        print("\nJSON recebido:", data)
 
         if tipo == "text":
             texto = msg.get("text", {}).get("body", "").strip().lower()
 
             if texto in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
                 resposta = (
-                    "Olá! Seja bem-vindo ao Teixeira.Brito Advogados.\n"
-                    "Sou o assistente virtual do Dr. Dayan. Posso te ajudar com:\n\n"
-                    "1️⃣ Análise de contrato\n"
-                    "2️⃣ Análise de processo\n"
-                    "3️⃣ Falar com advogado\n"
-                    "4️⃣ Outro assunto\n\n"
-                    "Digite o número da opção desejada."
+                    "Olá! Sou o assistente virtual do Dr. Dayan da Teixeira.Brito Advogados. Posso te ajudar com:\n\n"
+                    "1 - Análise de contrato\n2 - Análise de processo\n3 - Falar com advogado\n4 - Outro assunto\n\nDigite o número da opção desejada."
                 )
             elif texto == "1" or "contrato" in texto:
-                resposta = "Perfeito. Envie o contrato em PDF aqui mesmo que eu farei uma análise técnica e objetiva."
+                resposta = "Perfeito. Envie o contrato em PDF e farei a análise técnica."
             elif texto == "2" or "processo" in texto:
-                resposta = "Certo. Envie o número ou o arquivo do processo que deseja que eu avalie."
+                resposta = "Certo. Envie o número ou o arquivo do processo."
             elif texto == "3":
-                resposta = "📅 Para agendar com o Dr. Dayan, acesse:\nhttps://calendly.com/daan-advgoias"
+                resposta = "Para agendar com Dr. Dayan, acesse: https://calendly.com/daan-advgoias"
             elif texto == "4" or "outro" in texto:
-                resposta = "Compreendido. Me diga com clareza o que você precisa para que eu possa te orientar da melhor forma."
+                resposta = "Ok. Me diga com clareza o que você precisa."
             else:
-                resposta = "Recebi sua mensagem. Pode detalhar melhor o que você deseja resolver?"
+                resposta = "Não entendi. Pode detalhar melhor o que você deseja resolver?"
 
             enviar_resposta(numero, resposta)
 
@@ -114,16 +108,21 @@ def webhook():
             if mime == "application/pdf":
                 resposta = analisar_pdf_por_url(url)
             else:
-                resposta = "No momento, só consigo analisar arquivos em PDF. Por favor, envie nesse formato."
+                resposta = "Por enquanto, aceito apenas arquivos em PDF."
 
             enviar_resposta(numero, resposta)
 
         else:
-            resposta = "Recebi sua mensagem, mas ainda não consigo interpretar esse conteúdo. Tente enviar um texto ou contrato em PDF."
+            resposta = "Recebi sua mensagem, mas ainda não consigo interpretar esse tipo de conteúdo. Envie um texto ou PDF."
             enviar_resposta(numero, resposta)
 
         return jsonify({"status": "ok"})
 
     except Exception as e:
-        print("❌ Erro geral:", str(e))
+        print("Erro geral:", str(e))
         return jsonify({"erro": str(e)})
+
+# === EXECUÇÃO DO SERVIDOR ===
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
