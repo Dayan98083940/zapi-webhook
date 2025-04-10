@@ -1,17 +1,17 @@
 from flask import Flask, request, jsonify
 import requests
 import os
-import fitz  # PyMuPDF
 import openai
+import fitz  # PyMuPDF
 
 app = Flask(__name__)
 
-# === CONFIGURAÇÕES ===
+# Configuração
 ZAPI_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1/token/61919ECA32B76ED6ABDAE637/send-text"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI_AQUI"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI"
 openai.api_key = OPENAI_API_KEY
 
-# === FUNÇÃO DE RESPOSTA VIA Z-API ===
+# Envia resposta via Z-API
 def enviar_resposta(numero, resposta):
     payload = {
         "phone": numero,
@@ -20,60 +20,55 @@ def enviar_resposta(numero, resposta):
     headers = {
         "Content-Type": "application/json"
     }
-    return requests.post(ZAPI_URL, json=payload, headers=headers)
+    requests.post(ZAPI_URL, json=payload, headers=headers)
 
-# === FUNÇÃO PARA ANALISAR O PDF ===
+# Analisa PDF enviado
 def analisar_pdf_por_url(url):
     try:
         response = requests.get(url)
         if response.status_code != 200:
-            return "Não consegui acessar o documento. Por favor, tente novamente."
+            return "Não consegui acessar o documento. Por favor, envie novamente."
 
-        # Salva o arquivo temporariamente
-        with open("arquivo_temp.pdf", "wb") as f:
+        with open("contrato.pdf", "wb") as f:
             f.write(response.content)
 
-        # Extrai texto com PyMuPDF
-        doc = fitz.open("arquivo_temp.pdf")
+        doc = fitz.open("contrato.pdf")
         texto = ""
-        for page in doc:
-            texto += page.get_text()
-
+        for pagina in doc:
+            texto += pagina.get_text()
         doc.close()
 
         if not texto.strip():
-            return "O documento está em branco ou ilegível. Tente enviar outro arquivo."
+            return "O arquivo está em branco ou ilegível. Tente outro documento."
 
-        # Envia para análise da OpenAI
         prompt = (
-            "Você é um advogado especialista. Analise o conteúdo abaixo de forma técnica e objetiva, "
-            "identificando pontos críticos, cláusulas incompletas ou abusivas, e resuma os riscos e cuidados necessários "
-            "em uma linguagem clara para o cliente. A resposta deve seguir o estilo jurídico de Dayan Teixeira.\n\n"
-            f"Conteúdo do contrato:\n{texto[:4000]}"
+            "Você é um advogado especialista. Faça uma análise técnica e objetiva do contrato abaixo, "
+            "identificando cláusulas abusivas, pontos de atenção, ausência de prazos, obrigações mal definidas, etc. "
+            "Fale de forma clara e direta, no estilo Dayan Teixeira.\n\n"
+            f"Contrato:\n{texto[:4000]}"
         )
 
-        resposta_openai = openai.ChatCompletion.create(
+        resposta_ai = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "Você é um advogado claro e técnico."},
+                {"role": "system", "content": "Você é um advogado claro, direto e técnico."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7
         )
 
-        return resposta_openai.choices[0].message["content"]
+        return resposta_ai.choices[0].message["content"]
 
     except Exception as e:
-        return f"Ocorreu um erro durante a análise: {str(e)}"
+        return f"Ocorreu um erro na análise: {str(e)}"
 
-# === ROTA PRINCIPAL ===
+# Webhook principal
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
         data = request.json
-        mensagem = ""
-        numero = data["messages"][0]["from"].split("@")[0]
-        tipo = data["messages"][0]["type"]
+        tipo = data.get("type") or data["messages"][0].get("type")
+        numero = data.get("phone") or data["messages"][0]["from"].split("@")[0]
 
         if tipo == "text":
             mensagem = data["messages"][0]["text"]["body"].strip().lower()
@@ -81,53 +76,43 @@ def webhook():
             if mensagem in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
                 resposta = (
                     "Olá! Seja bem-vindo ao Teixeira.Brito Advogados.\n"
-                    "Sou o assistente virtual do Dr. Dayan e posso te ajudar com:\n\n"
+                    "Sou o assistente virtual do Dr. Dayan. Posso te ajudar com:\n\n"
                     "1️⃣ Análise de contrato\n"
                     "2️⃣ Análise de processo\n"
                     "3️⃣ Atendimento com advogado\n"
                     "4️⃣ Outro assunto\n\n"
-                    "Digite o número da opção desejada para continuarmos."
+                    "Digite o número da opção desejada."
                 )
             elif mensagem == "1" or "contrato" in mensagem:
-                resposta = (
-                    "Perfeito. Encaminhe o contrato em PDF aqui mesmo, e farei uma análise técnica e objetiva para você."
-                )
+                resposta = "Perfeito. Envie o contrato em PDF aqui mesmo e farei a análise para você."
             elif mensagem == "2" or "processo" in mensagem:
-                resposta = (
-                    "Tudo certo. Me envie o número ou documento do processo que deseja que eu analise."
-                )
+                resposta = "Envie o número ou arquivo do processo que deseja que eu analise."
             elif mensagem == "3":
-                resposta = (
-                    "Você pode agendar um horário com o Dr. Dayan pelo link abaixo:\n"
-                    "📅 https://calendly.com/daan-advgoias"
-                )
+                resposta = "📅 Agende seu atendimento com o Dr. Dayan: https://calendly.com/daan-advgoias"
             elif mensagem == "4" or "outro" in mensagem:
-                resposta = (
-                    "Claro. Me diga mais sobre o que você precisa e vamos analisar juntos."
-                )
+                resposta = "Claro. Me explique melhor o que você precisa."
             else:
-                resposta = (
-                    "Recebi sua mensagem. Pode me explicar com mais clareza o que você precisa?"
-                )
+                resposta = "Recebi sua mensagem. Pode me dar mais detalhes sobre o que precisa?"
 
             enviar_resposta(numero, resposta)
 
         elif tipo == "document":
-            mime = data["messages"][0]["document"].get("mime_type", "")
+            doc_info = data["messages"][0]["document"]
+            mime = doc_info.get("mime_type", "")
+            url = doc_info.get("url")
+
             if mime == "application/pdf":
-                url_pdf = data["messages"][0]["document"]["url"]
-                resposta = analisar_pdf_por_url(url_pdf)
+                resposta = analisar_pdf_por_url(url)
             else:
-                resposta = "Por enquanto, consigo analisar apenas arquivos em PDF. Por favor, envie nesse formato."
+                resposta = "Atualmente só consigo analisar arquivos em PDF. Por favor, envie nesse formato."
 
             enviar_resposta(numero, resposta)
 
-        return jsonify({"status": "ok", "mensagem": mensagem if mensagem else tipo})
+        return jsonify({"status": "ok"})
 
     except Exception as e:
         return jsonify({"erro": str(e)})
 
-# === RODAR LOCAL OU NO RENDER ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
