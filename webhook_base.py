@@ -1,42 +1,63 @@
 from flask import Flask, request, jsonify
-import os
-import openai
+from datetime import datetime
 
 app = Flask(__name__)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Horário comercial
+HORARIOS = {
+    "manha_inicio": 8,
+    "manha_fim": 12,
+    "tarde_inicio": 14,
+    "tarde_fim": 18
+}
 
-bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
-grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
+# Endereço presencial fixo
+ENDERECO = "Avenida C-5, Quadra 8, Lote 8, nº 504, Jardim América, Goiânia/GO, CEP 74265-050"
 
-@app.route("/webhook", methods=["POST"])
-def responder():
+@app.route('/webhook', methods=['POST'])
+def webhook():
     data = request.get_json()
+    mensagem = data.get("message", "").lower()
+    nome = data.get("senderName", "Cliente")
 
-    nome = data.get("senderName", "")
-    grupo = data.get("groupName", "")
-    mensagem = data.get("message", "")
-    historico = data.get("messageCount", 0)
+    # Verifica se está fora do horário comercial
+    agora = datetime.now()
+    hora = agora.hour
+    fora_do_horario = not (
+        (HORARIOS["manha_inicio"] <= hora < HORARIOS["manha_fim"]) or
+        (HORARIOS["tarde_inicio"] <= hora < HORARIOS["tarde_fim"])
+    )
 
-    if nome in bloqueados or grupo in grupos_bloqueados:
-        return jsonify({"response": None})
+    if "quero agendar" in mensagem or "preciso marcar" in mensagem or "quero marcar" in mensagem:
+        if fora_do_horario:
+            resposta = f"Olá, {nome}! Atendemos em horário comercial (08h–12h / 14h–18h). Posso registrar seu pedido e te retornamos no primeiro horário disponível amanhã."
+        else:
+            resposta = (
+                f"Olá, {nome}! O Dr. Dayan realiza atendimentos virtuais e presenciais.\n"
+                "Você prefere **virtual** (via Microsoft Teams) ou **presencial** (em nosso escritório)?"
+            )
+        return jsonify({"response": resposta})
 
-    if historico and historico > 1:
-        return jsonify({"response": None})
+    if "virtual" in mensagem:
+        return jsonify({
+            "response": (
+                "Perfeito! Você pode escolher o melhor horário disponível para atendimento virtual através do link abaixo:\n"
+                "👉 https://calendly.com/daan-advgoias\n\n"
+                "O atendimento será feito via Microsoft Teams."
+            )
+        })
 
-    try:
-        resposta = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Você é um assistente jurídico do escritório Teixeira Brito Advogados. Responda de forma clara e objetiva."},
-                {"role": "user", "content": mensagem}
-            ]
-        )
-        conteudo = resposta.choices[0].message.content
-        return jsonify({"response": conteudo})
+    if "presencial" in mensagem or "no escritório" in mensagem:
+        return jsonify({
+            "response": (
+                f"Claro! O atendimento presencial será no nosso escritório localizado em:\n"
+                f"{ENDERECO}\n\n"
+                "Você pode sugerir o melhor horário dentro do expediente (08h–12h / 14h–18h) e confirmaremos em seguida."
+            )
+        })
 
-    except Exception as e:
-        return jsonify({"response": f"Ocorreu um erro: {str(e)}"})
+    # Resposta padrão (placeholder)
+    return jsonify({"response": "Recebido! Já estou processando sua mensagem. Em instantes você terá um retorno."})
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+if __name__ == '__main__':
+    app.run()
