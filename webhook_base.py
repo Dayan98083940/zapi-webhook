@@ -7,7 +7,7 @@ app = Flask(__name__)
 # Variáveis de ambiente/configuração
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID", "3DF715E26F0310B41D118E66062CE0C1")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "32EF0706F060E25B5CE884CC")
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -15,12 +15,11 @@ def webhook():
     print("JSON recebido:", data)
 
     try:
-        phone = data.get("phone", "")
-        is_group = data.get("isGroup", False)
+        phone = data.get("participantPhone") or data.get("phone", "")
         from_me = data.get("fromMe", False)
         text_message = data.get("text", {}).get("message")
 
-        if not from_me and not is_group and text_message:
+        if not from_me and text_message and phone:
             if "contrato" in text_message.lower():
                 resposta = "Recebi sua mensagem sobre contrato. Pode me enviar o PDF ou o conteúdo para análise."
             else:
@@ -38,13 +37,15 @@ def enviar_resposta(numero, mensagem):
         "phone": numero,
         "message": mensagem
     }
+
     headers = {
-        "Content-Type": "application/json",
-        "Client-Token": ZAPI_TOKEN
+        "Content-Type": "application/json"
     }
 
+    url = ZAPI_URL  # Já inclui o token embutido
+
     try:
-        response = requests.post(ZAPI_URL, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers)
         print(f"[ENVIANDO] Para: {numero}")
         print("Mensagem:", mensagem)
         print("Status Z-API:", response.status_code)
