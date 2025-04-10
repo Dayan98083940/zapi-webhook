@@ -119,7 +119,7 @@ def enviar_resposta(numero, mensagem):
     }
     headers = {
         "Content-Type": "application/json",
-        "Client-Token": ZAPI_TOKEN
+        "Authorization": f"Bearer {ZAPI_TOKEN}"
     }
 
     try:
