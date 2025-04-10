@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__)
 
-# Endpoint da sua instância Z-API com ID e Token já definidos
+# Endpoint da sua instância Z-API
 ZAPI_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1/token/61919ECA32B76ED6ABDAE637/send-text"
 
 @app.route("/webhook", methods=["POST"])
@@ -12,34 +12,50 @@ def webhook():
     try:
         data = request.json
 
-        # Captura o texto da mensagem e o telefone do cliente
+        # Extrai a mensagem e o número do cliente
         message = data["messages"][0]["text"]["body"].strip().lower()
         phone_id = data["messages"][0]["from"]
         numero = phone_id.split("@")[0]
 
-        # Define a resposta com base no conteúdo da mensagem recebida
-        if "contrato" in message:
+        # Define a resposta conforme a mensagem recebida
+        if message in ["oi", "olá", "bom dia", "boa tarde", "boa noite"]:
             resposta = (
-                "Entendido. Me encaminhe o contrato em PDF ou me diga os pontos principais "
-                "que você deseja revisar. Farei a análise com base nas informações fornecidas."
+                "Olá! Seja bem-vindo ao Teixeira.Brito Advogados.\n"
+                "Sou o assistente virtual do Dr. Dayan e posso te ajudar com:\n\n"
+                "1️⃣ Análise de contrato\n"
+                "2️⃣ Análise de processo\n"
+                "3️⃣ Atendimento com advogado\n"
+                "4️⃣ Outro assunto\n\n"
+                "Digite o número da opção desejada para continuarmos."
             )
-        elif "processo" in message:
+        elif message == "1" or "contrato" in message:
             resposta = (
-                "Por favor, envie o número do processo ou o arquivo que deseja que eu analise. "
-                "Analisarei com atenção e te passo um retorno objetivo."
+                "Perfeito. Encaminhe o contrato em PDF ou descreva os pontos principais que deseja revisar. "
+                "Retornarei com uma análise técnica e objetiva."
             )
-        elif "ajuda" in message or "atendimento" in message:
+        elif message == "2" or "processo" in message:
             resposta = (
-                "Estou à disposição para te orientar. Me conte de forma direta o que está acontecendo "
-                "e vamos buscar a melhor solução juntos."
+                "Ok. Me envie o número do processo ou o arquivo em anexo. "
+                "Farei a análise e retorno com os pontos relevantes."
+            )
+        elif message == "3":
+            resposta = (
+                "Certo. Você pode agendar um atendimento direto com o Dr. Dayan através do link abaixo:\n\n"
+                "📅 https://calendly.com/daan-advgoias\n\n"
+                "Escolha o melhor dia e horário disponíveis."
+            )
+        elif message == "4" or "outro" in message:
+            resposta = (
+                "Claro. Me conte mais detalhes sobre o que você precisa. "
+                "Estou aqui para entender e direcionar da melhor forma."
             )
         else:
             resposta = (
-                "Recebi sua mensagem. Pode me explicar com mais clareza o que você precisa? "
-                "Assim consigo te dar uma resposta mais precisa."
+                "Recebi sua mensagem. Me explique com clareza o que precisa, "
+                "e te respondo com precisão e agilidade."
             )
 
-        # Envio da resposta automática via Z-API
+        # Prepara o envio via Z-API
         payload = {
             "phone": numero,
             "message": resposta
@@ -61,7 +77,7 @@ def webhook():
     except Exception as e:
         return jsonify({"erro": str(e)})
 
-# Configuração de porta obrigatória para o Render detectar o serviço
+# Define a porta de execução para o Render detectar corretamente
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
