@@ -9,7 +9,7 @@ app = Flask(__name__)
 # === CONFIGURAÇÕES ===
 ZAPI_INSTANCE_ID = "3DF715E26F0310B41D118E66062CE0C1"
 ZAPI_TOKEN = "32EF0706F060E25B5CE884CC"
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-message"
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
 openai.api_key = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI"
 
 # === FUNÇÃO: Enviar resposta via Z-API ===
@@ -19,9 +19,9 @@ def enviar_resposta(numero, resposta):
         "message": resposta
     }
     headers = {
-        "Content-Type": "application/json",
-        "Client-Token": ZAPI_TOKEN
+        "Content-Type": "application/json"
     }
+
     try:
         r = requests.post(ZAPI_URL, json=payload, headers=headers)
         print(f"\n📣 [ENVIAR] Para: {numero}")
@@ -74,7 +74,11 @@ def webhook():
         data = request.json
         msg = data.get("messages", [{}])[0]
         tipo = msg.get("type")
+
+        # Para mensagens de grupo, usar participant
         numero = msg.get("from", "").split("@")[0]
+        if "-" in numero:  # grupo
+            numero = msg.get("participant", "").split("@")[0]
 
         print("🔍 JSON recebido:", data)
 
