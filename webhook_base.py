@@ -3,22 +3,20 @@ import requests
 import openai
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 app = Flask(__name__)
 
-# Variáveis de ambiente/configuração
+# Configuração de ambiente
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID", "3DF715E26F0310B41D118E66062CE0C1")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "32EF0706F060E25B5CE884CC")
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Dicionário de histórico temporário de interações
-HISTORICO_CLIENTES = {}
-
-# Número da linha direta do Dr. Dayan (pode ser usado para menções diretas)
 NUMERO_DIRETO = "556299812069"
+HISTORICO_CLIENTES = {}
 
 PROMPT_BASE = """
 Você é um assistente jurídico que trabalha para o escritório Teixeira.Brito Advogados, liderado pelo Dr. Dayan, especialista em contratos, sucessões, holding e renegociação de dívidas.
@@ -38,20 +36,24 @@ Aqui está a mensagem recebida:
 Responda como se você fosse o próprio Dr. Dayan ou seu assistente jurídico.
 """
 
+@app.route("/", methods=["GET"])
+def home():
+    return "Webhook ZAPI online com sucesso.", 200
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    print("JSON recebido:", data)
+    print("📩 JSON recebido:", data)
 
     try:
         phone = data.get("participantPhone") or data.get("phone", "")
         from_me = data.get("fromMe", False)
-        text_message = data.get("text", {}).get("message")
         is_group = data.get("isGroup", False)
+        text_message = data.get("text", {}).get("message", "")
         participant = data.get("participantPhone")
 
         if not from_me and text_message and phone:
-            # Em grupos, só interage se a mensagem for diretamente para mim
+            # Grupos: só responde se for mencionado ou for para o número direto
             if is_group and (participant != NUMERO_DIRETO and NUMERO_DIRETO not in text_message):
                 return "", 200
 
@@ -63,10 +65,11 @@ def webhook():
             if resposta:
                 if precisa_atendimento_humano(phone, text_message):
                     resposta += "\n\n📣 Encaminhei sua solicitação para nosso atendimento humanizado. Em breve você receberá retorno."
+
                 enviar_resposta(phone, resposta)
 
     except Exception as e:
-        print("Erro ao processar mensagem:", str(e))
+        print("❌ Erro ao processar webhook:", str(e))
 
     return "", 200
 
@@ -85,7 +88,7 @@ def analisar_mensagem(texto):
     prompt = PROMPT_BASE.format(mensagem=texto.strip())
 
     try:
-        response = client.chat.completions.create(
+        resposta = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "Você é um assistente jurídico experiente."},
@@ -94,10 +97,10 @@ def analisar_mensagem(texto):
             max_tokens=500,
             temperature=0.7
         )
-        return response.choices[0].message.content.strip()
+        return resposta.choices[0].message.content.strip()
 
     except Exception as e:
-        print("Erro ao gerar resposta com OpenAI:", str(e))
+        print("❌ Erro ao consultar OpenAI:", str(e))
         return "Recebi sua mensagem, mas ainda não consegui interpretar totalmente. Em breve, nossa equipe entrará em contato para atendimento personalizado."
 
 def precisa_atendimento_humano(numero, msg):
@@ -125,12 +128,12 @@ def enviar_resposta(numero, mensagem):
 
     try:
         response = requests.post(ZAPI_URL, json=payload, headers=headers)
-        print(f"[ENVIANDO] Para: {numero}")
+        print(f"✅ Mensagem enviada para {numero}")
         print("Mensagem:", mensagem)
         print("Status Z-API:", response.status_code)
         print("Retorno Z-API:", response.text)
     except Exception as e:
-        print("❌ Erro ao enviar mensagem:", str(e))
+        print("❌ Erro ao enviar resposta pela Z-API:", str(e))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
