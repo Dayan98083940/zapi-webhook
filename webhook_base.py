@@ -1,6 +1,9 @@
 from flask import Flask, request
 import requests
+import openai
 import os
+import re
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -8,6 +11,32 @@ app = Flask(__name__)
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID", "3DF715E26F0310B41D118E66062CE0C1")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "32EF0706F060E25B5CE884CC")
 ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
+
+# Dicionário de histórico temporário de interações
+HISTORICO_CLIENTES = {}
+
+# Número da linha direta do Dr. Dayan (pode ser usado para menções diretas)
+NUMERO_DIRETO = "556299812069"
+
+PROMPT_BASE = """
+Você é um assistente jurídico que trabalha para o escritório Teixeira.Brito Advogados, liderado pelo Dr. Dayan, especialista em contratos, sucessões, holding e renegociação de dívidas.
+
+Seu objetivo é:
+1. Entender a solicitação do cliente recebida via WhatsApp.
+2. Ser cordial, claro, técnico e direto nas respostas.
+3. Sempre responder como um advogado experiente e confiável, mantendo um tom de autoridade e empatia.
+4. Caso a mensagem seja muito curta, como "oi", "bom dia", oriente o cliente a explicar o que precisa.
+5. Caso a mensagem mencione documentos, contratos, processos ou análise, solicite o envio do material ou mais informações.
+6. Evite respostas genéricas. Seja objetivo e resolutivo.
+7. Se não conseguir compreender a solicitação ou se houver repetição de dúvidas, peça para aguardar atendimento humanizado.
+
+Aqui está a mensagem recebida:
+"{mensagem}"
+
+Responda como se você fosse o próprio Dr. Dayan ou seu assistente jurídico.
+"""
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -15,14 +44,25 @@ def webhook():
     print("JSON recebido:", data)
 
     try:
-        # Se a mensagem vier de grupo, usa o participantPhone
         phone = data.get("participantPhone") or data.get("phone", "")
         from_me = data.get("fromMe", False)
         text_message = data.get("text", {}).get("message")
+        is_group = data.get("isGroup", False)
+        participant = data.get("participantPhone")
 
         if not from_me and text_message and phone:
-            resposta = analisar_mensagem(text_message)
+            # Em grupos, só interage se a mensagem for para mim
+            if is_group and (participant != NUMERO_DIRETO and NUMERO_DIRETO not in text_message):
+                return "", 200
+
+            if verificar_palavra_chave(text_message):
+                resposta = comando_direto(text_message)
+            else:
+                resposta = analisar_mensagem(text_message)
+
             if resposta:
+                if precisa_atendimento_humano(phone, text_message):
+                    resposta += "\n\n📣 Encaminhei sua solicitação para nosso atendimento humanizado. Em breve você receberá retorno."
                 enviar_resposta(phone, resposta)
 
     except Exception as e:
@@ -30,21 +70,47 @@ def webhook():
 
     return "", 200
 
-def analisar_mensagem(texto):
-    texto = texto.lower()
+def verificar_palavra_chave(msg):
+    return msg.strip().lower().startswith("#")
 
-    if "contrato" in texto:
-        return "Recebi sua mensagem sobre contrato. Pode me enviar o PDF ou o conteúdo para análise."
-    elif "processo" in texto:
-        return "Recebi sua mensagem sobre processo. Por favor, envie o número do processo ou o arquivo em PDF."
-    elif "analisar" in texto or "analisa" in texto:
-        return "Claro! Envie o arquivo em PDF ou escreva o conteúdo que deseja que eu analise."
-    elif "fazer um contrato" in texto or "quero um contrato" in texto:
-        return "Perfeito. Me diga qual é o tipo de contrato que você precisa e os dados principais."
-    elif "oi" in texto or "olá" in texto or "bom dia" in texto or "boa tarde" in texto or "boa noite" in texto:
-        return "Olá! Sou o assistente jurídico do Dr. Dayan. Envie sua dúvida ou o material para análise."
+def comando_direto(msg):
+    comandos = {
+        "#contrato": "Por favor, envie o contrato em PDF ou nos diga do que ele trata.",
+        "#agendar": "Você pode agendar um horário com o Dr. Dayan pelo link: https://calendly.com/daan-advgoias",
+        "#valores": "Nossos honorários são personalizados conforme a complexidade do caso. Podemos analisar sua situação e te responder com clareza. Envie mais detalhes."
+    }
+    return comandos.get(msg.strip().lower(), "Comando não reconhecido. Por favor, envie sua dúvida ou solicitação.")
+
+def analisar_mensagem(texto):
+    prompt = PROMPT_BASE.format(mensagem=texto.strip())
+
+    try:
+        resposta = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Você é um assistente jurídico experiente."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        return resposta.choices[0].message.content.strip()
+
+    except Exception as e:
+        print("Erro ao gerar resposta com OpenAI:", str(e))
+        return "Recebi sua mensagem, mas ainda não consegui interpretar totalmente. Em breve, nossa equipe entrará em contato para atendimento personalizado."
+
+def precisa_atendimento_humano(numero, msg):
+    historico = HISTORICO_CLIENTES.get(numero, {"repeticoes": 0, "ultima": "", "hora": datetime.now()})
+    if msg.strip().lower() == historico["ultima"]:
+        historico["repeticoes"] += 1
     else:
-        return "Recebi sua mensagem, mas ainda não consigo interpretar esse tipo de conteúdo. Envie um texto ou PDF."
+        historico["repeticoes"] = 1
+        historico["ultima"] = msg.strip().lower()
+    historico["hora"] = datetime.now()
+    HISTORICO_CLIENTES[numero] = historico
+
+    return historico["repeticoes"] >= 2
 
 def enviar_resposta(numero, mensagem):
     payload = {
