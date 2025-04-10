@@ -16,23 +16,24 @@ openai.api_key = OPENAI_API_KEY
 
 # === ENVIAR RESPOSTA ===
 def enviar_resposta(numero, resposta):
+    url = f"https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1/send-text"
     payload = {
         "phone": numero,
         "message": resposta
     }
     headers = {
         "Content-Type": "application/json",
-        "Client-Token": ZAPI_TOKEN
+        "Client-Token": "32EF0706F060E25B5CE884CC"  # ✅ Agora o token está certo e no lugar correto
     }
 
     try:
-        r = requests.post(ZAPI_URL, json=payload, headers=headers)
-        print(f"\n📣 [ENVIAR] Para: {numero}")
+        r = requests.post(url, json=payload, headers=headers)
+        print(f"📣 [ENVIAR] Para: {numero}")
         print("📝 Mensagem:", resposta)
         print("🔁 Status Z-API:", r.status_code)
         print("📩 Retorno Z-API:", r.text)
     except Exception as e:
-        print("❌ Erro ao enviar resposta:", str(e))
+        print("❌ Erro ao enviar:", e)
 
 # === ANÁLISE DE PDF ===
 def analisar_pdf_por_url(url):
