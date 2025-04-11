@@ -12,16 +12,15 @@ ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 NUMERO_INSTANCIA = os.getenv("NUMERO_INSTANCIA")
-
 ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Lista de bloqueio por nome de contato e grupo
+# Contatos e grupos bloqueados
 bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
-# Carrega respostas automáticas de bloco
+# Carrega blocos de resposta automática
 try:
     with open("blocos_respostas.json", "r", encoding="utf-8") as file:
         respostas_automaticas = json.load(file)
@@ -78,7 +77,7 @@ def enviar_zapi(phone, message):
         r = requests.post(ZAPI_URL, json=payload, headers=headers)
         print(f"✅ Enviado para {phone} | Status: {r.status_code} | Resposta: {r.text}")
     except Exception as e:
-        print("❌ Erro ao enviar pela Z-API:", str(e))
+        print("❌ Erro Z-API:", str(e))
 
 @app.route("/", methods=["GET"])
 def health():
@@ -90,7 +89,6 @@ def responder():
         data = request.json or {}
         print("📩 JSON recebido:", data)
 
-        # Captura da mensagem: texto direto, imagem ou documento
         mensagem = data.get("message", "").strip() \
             or data.get("text", {}).get("message", "") \
             or data.get("text", {}).get("body", "") \
@@ -102,7 +100,7 @@ def responder():
             print("⚠️ Mensagem ausente.")
             return jsonify({"response": None})
 
-        # 📞 Captura segura do telefone
+        # 📞 Pega o número correto (grupo ou privado)
         if data.get("isGroup", False) and data.get("participantPhone"):
             telefone = data["participantPhone"]
         else:
@@ -124,7 +122,6 @@ def responder():
             return jsonify({"response": None})
 
         tipo = detectar_assunto(mensagem)
-
         if tipo == "profissional":
             resposta = responder_com_bloco(mensagem) or gerar_resposta_gpt(mensagem)
             if resposta:
@@ -132,7 +129,6 @@ def responder():
                 return jsonify({"response": resposta})
 
         return jsonify({"response": None})
-
     except Exception as e:
         print("❌ Erro geral:", str(e))
         return jsonify({"error": "Erro interno"}), 500
