@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import openai
 import requests
 
+# Carrega variáveis de ambiente do arquivo .env
 load_dotenv()
 
 app = Flask(__name__)
@@ -17,13 +18,17 @@ ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Contatos bloqueados
+# Lista de bloqueios
 bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
 # Carrega blocos de respostas
-with open("blocos_respostas.json", "r", encoding="utf-8") as file:
-    respostas_automaticas = json.load(file)
+try:
+    with open("blocos_respostas.json", "r", encoding="utf-8") as file:
+        respostas_automaticas = json.load(file)
+except Exception as e:
+    print("❌ Erro ao carregar blocos_respostas.json:", str(e))
+    respostas_automaticas = []
 
 def detectar_assunto(msg):
     profissionais = [
@@ -46,24 +51,24 @@ def responder_com_bloco(msg):
 def gerar_resposta_gpt(mensagem):
     try:
         prompt = f"""
-Você é um assistente jurídico que trabalha para o escritório Teixeira.Brito Advogados.
+Você é um assistente jurídico do escritório Teixeira.Brito Advogados.
 
-Mensagem recebida: {mensagem}
+Mensagem recebida do cliente: {mensagem}
 
-Responda de forma clara, técnica e cordial.
+Responda de forma clara, empática e objetiva, como um profissional jurídico confiável.
 """
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "Você é um assistente jurídico experiente."},
+                {"role": "system", "content": "Você é um assistente jurídico profissional."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=400,
+            max_tokens=500,
             temperature=0.5
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print("Erro ao gerar resposta com OpenAI:", str(e))
+        print("❌ Erro ao gerar resposta GPT:", str(e))
         return None
 
 def enviar_zapi(phone, message):
@@ -77,51 +82,50 @@ def enviar_zapi(phone, message):
     }
     try:
         r = requests.post(ZAPI_URL, json=payload, headers=headers)
-        print(f"✅ Mensagem enviada - Status: {r.status_code} - Resposta: {r.text}")
+        print(f"✅ Enviado para {phone} | Status: {r.status_code} | Resposta: {r.text}")
     except Exception as e:
-        print("Erro ao enviar para Z-API:", str(e))
+        print("❌ Erro ao enviar via Z-API:", str(e))
 
 @app.route("/", methods=["GET"])
-def health():
-    return jsonify({"status": "online", "service": "webhook jurídico"}), 200
+def health_check():
+    return jsonify({"status": "online", "message": "Webhook jurídico ativo"}), 200
 
 @app.route("/webhook", methods=["POST"])
 def responder():
     try:
-        data = request.json
-        nome = data.get("senderName")
-        grupo = data.get("groupName")
-        mensagem = data.get("message")
-        historico = data.get("messageCount")
-        telefone = data.get("senderPhone")
+        data = request.json or {}
+        nome = data.get("senderName", "")
+        grupo = data.get("groupName", "")
+        mensagem = data.get("message", "")
+        historico = data.get("messageCount", 0)
+        telefone = data.get("senderPhone", "")
 
-        # Bloqueios
+        # Segurança
+        if not mensagem or not telefone:
+            return jsonify({"error": "Mensagem ou telefone ausente"}), 400
+
         if nome in bloqueados or grupo in grupos_bloqueados:
             return jsonify({"response": None})
 
-        # Evita múltiplas respostas
-        if (historico or 0) > 1:
+        if historico > 1:
             return jsonify({"response": None})
 
         tipo = detectar_assunto(mensagem)
 
         if tipo == "profissional":
             resposta = responder_com_bloco(mensagem)
-
             if not resposta:
                 resposta = gerar_resposta_gpt(mensagem)
 
             if resposta:
                 enviar_zapi(telefone, resposta)
                 return jsonify({"response": resposta})
-            else:
-                return jsonify({"response": "Recebemos sua mensagem. Em breve nossa equipe entrará em contato."})
 
         return jsonify({"response": None})
 
     except Exception as e:
         print("❌ Erro no processamento do webhook:", str(e))
-        return jsonify({"error": "Erro interno no servidor"}), 500
+        return jsonify({"error": "Erro interno"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
