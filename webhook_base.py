@@ -109,7 +109,7 @@ def responder():
 
         # Temporário: continuar mesmo com dados incompletos (para debug)
         if not mensagem or not telefone:
-            print("⚠️ Dados ausentes (mensagem ou telefone). Prosseguindo para debug.")
+            print("⚠️ Dados ausentes (mensagem ou telefone). Prosseguindo para debug...")
 
         if nome in bloqueados or grupo in grupos_bloqueados:
             print("⛔ Contato ou grupo bloqueado:", nome or grupo)
@@ -130,4 +130,11 @@ def responder():
                 enviar_zapi(telefone, resposta)
                 return jsonify({"response": resposta})
 
-        return jsonify({"response": None
+        return jsonify({"response": None})
+
+    except Exception as e:
+        print("❌ Erro no webhook:", str(e))
+        return jsonify({"error": "Erro interno"}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
