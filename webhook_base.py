@@ -96,28 +96,29 @@ def responder():
         data = request.json or {}
         print("📩 JSON recebido:", data)
 
-        mensagem = data.get("message", "").strip()
-        telefone = data.get("senderPhone", "")
+        # Tentativas múltiplas para extrair o texto
+        mensagem = data.get("message", "").strip() \
+            or data.get("text", {}).get("body", "") \
+            or data.get("text", {}).get("message", "") \
+            or ""
+
+        telefone = data.get("senderPhone") or data.get("phone") or ""
         nome = data.get("senderName", "")
         grupo = data.get("groupName", "")
-        historico = data.get("messageCount") or 0
+        historico = data.get("messageCount", 0)
 
-        # Campos obrigatórios
+        # Temporário: continuar mesmo com dados incompletos (para debug)
         if not mensagem or not telefone:
-            print("❌ Mensagem ou telefone ausente.")
-            return jsonify({"error": "Mensagem ou telefone ausente"}), 400
+            print("⚠️ Dados ausentes (mensagem ou telefone). Prosseguindo para debug.")
 
-        # Bloqueios
         if nome in bloqueados or grupo in grupos_bloqueados:
             print("⛔ Contato ou grupo bloqueado:", nome or grupo)
             return jsonify({"response": None})
 
-        # Evita múltiplas respostas
         if historico > 1:
-            print("🔁 Mensagem ignorada por já ter histórico > 1.")
+            print("🔁 Mensagem ignorada (já possui histórico).")
             return jsonify({"response": None})
 
-        # Identificar tipo e responder
         tipo = detectar_assunto(mensagem)
 
         if tipo == "profissional":
@@ -129,11 +130,4 @@ def responder():
                 enviar_zapi(telefone, resposta)
                 return jsonify({"response": resposta})
 
-        return jsonify({"response": None})
-
-    except Exception as e:
-        print("❌ Erro no webhook:", str(e))
-        return jsonify({"error": "Erro interno"}), 500
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+        return jsonify({"response": None
