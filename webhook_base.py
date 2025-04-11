@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import openai
 import requests
 
-# Carrega variáveis de ambiente do arquivo .env
+# Carrega variáveis de ambiente
 load_dotenv()
 
 app = Flask(__name__)
@@ -18,11 +18,11 @@ ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Lista de bloqueios
+# Contatos e grupos bloqueados
 bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
-# Carrega blocos de respostas
+# Blocos de resposta automática
 try:
     with open("blocos_respostas.json", "r", encoding="utf-8") as file:
         respostas_automaticas = json.load(file)
@@ -94,22 +94,30 @@ def health_check():
 def responder():
     try:
         data = request.json or {}
+        print("📩 JSON recebido:", data)
+
+        mensagem = data.get("message", "").strip()
+        telefone = data.get("senderPhone", "")
         nome = data.get("senderName", "")
         grupo = data.get("groupName", "")
-        mensagem = data.get("message", "")
-        historico = data.get("messageCount", 0)
-        telefone = data.get("senderPhone", "")
+        historico = data.get("messageCount") or 0
 
-        # Segurança
+        # Campos obrigatórios
         if not mensagem or not telefone:
+            print("❌ Mensagem ou telefone ausente.")
             return jsonify({"error": "Mensagem ou telefone ausente"}), 400
 
+        # Bloqueios
         if nome in bloqueados or grupo in grupos_bloqueados:
+            print("⛔ Contato ou grupo bloqueado:", nome or grupo)
             return jsonify({"response": None})
 
+        # Evita múltiplas respostas
         if historico > 1:
+            print("🔁 Mensagem ignorada por já ter histórico > 1.")
             return jsonify({"response": None})
 
+        # Identificar tipo e responder
         tipo = detectar_assunto(mensagem)
 
         if tipo == "profissional":
@@ -124,7 +132,7 @@ def responder():
         return jsonify({"response": None})
 
     except Exception as e:
-        print("❌ Erro no processamento do webhook:", str(e))
+        print("❌ Erro no webhook:", str(e))
         return jsonify({"error": "Erro interno"}), 500
 
 if __name__ == "__main__":
