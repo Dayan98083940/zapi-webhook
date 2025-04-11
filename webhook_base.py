@@ -11,7 +11,7 @@ load_dotenv()
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-NUMERO_INSTANCIA = os.getenv("NUMERO_INSTANCIA")
+NUMERO_INSTANCIA = os.getenv("NUMERO_INSTANCIA")  # Ex: 5562998083940
 
 ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -19,6 +19,7 @@ client = openai.OpenAI(api_key=OPENAI_API_KEY)
 bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
+# Carregar respostas automáticas
 try:
     with open("blocos_respostas.json", "r", encoding="utf-8") as file:
         respostas_automaticas = json.load(file)
@@ -27,10 +28,8 @@ except Exception as e:
     respostas_automaticas = []
 
 def detectar_assunto(msg):
-    termos = [
-        "contrato", "holding", "divórcio", "herança", "inventário",
-        "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"
-    ]
+    termos = ["contrato", "holding", "divórcio", "herança", "inventário",
+              "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"]
     msg = msg.lower()
     return "profissional" if any(t in msg for t in termos) else "particular"
 
@@ -69,13 +68,13 @@ def enviar_zapi(phone, message):
     payload = {"phone": phone, "message": message}
     headers = {
         "Content-Type": "application/json",
-        "Client-Token": ZAPI_TOKEN
+        "Client-Token": ZAPI_TOKEN  # ✅ Token obrigatório no Header
     }
     try:
         r = requests.post(ZAPI_URL, json=payload, headers=headers)
         print(f"✅ Enviado para {phone} | Status: {r.status_code} | Resposta: {r.text}")
     except Exception as e:
-        print("❌ Erro Z-API:", str(e))
+        print("❌ Erro ao enviar pela Z-API:", str(e))
 
 @app.route("/", methods=["GET"])
 def health():
@@ -99,7 +98,9 @@ def responder():
             return jsonify({"response": None})
 
         telefone = ""
-        if data.get("isGroup", False) and data.get("participantPhone"):
+        is_group = data.get("isGroup", False)
+
+        if is_group and data.get("participantPhone"):
             telefone = data["participantPhone"]
         else:
             telefone = data.get("senderPhone") or data.get("phone", "")
@@ -119,6 +120,11 @@ def responder():
             print(f"⛔ Ignorado: bloqueado ({nome or grupo})")
             return jsonify({"response": None})
 
+        # ✅ Filtro: só responde mensagens em grupo se o número da instância for mencionado
+        if is_group and NUMERO_INSTANCIA not in mensagem:
+            print("👥 Ignorado: grupo sem menção direta ao número.")
+            return jsonify({"response": None})
+
         tipo = detectar_assunto(mensagem)
         if tipo == "profissional":
             resposta = responder_com_bloco(mensagem) or gerar_resposta_gpt(mensagem)
@@ -131,6 +137,5 @@ def responder():
         print("❌ Erro geral:", str(e))
         return jsonify({"error": "Erro interno"}), 500
 
-# ✅ Correção: bloco com indentação correta
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
