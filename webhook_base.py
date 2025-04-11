@@ -2,19 +2,33 @@ from flask import Flask, request
 import requests
 import openai
 import os
-import re
+from dotenv import load_dotenv
 from datetime import datetime
+import logging
+
+# Carrega variáveis do .env
+load_dotenv()
+
+# Configurar logs
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+logging.basicConfig(
+    filename="logs/app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Variáveis de ambiente/configuração
+# Variáveis de ambiente
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Histórico para controle de repetição
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 HISTORICO_CLIENTES = {}
 NUMERO_DIRETO = "556299812069"
 
@@ -38,12 +52,12 @@ Responda como se você fosse o próprio Dr. Dayan ou seu assistente jurídico.
 
 @app.route("/", methods=["GET"])
 def health_check():
-    return "Webhook Z-API rodando.", 200
+    return "Webhook Z-API rodando com sucesso.", 200
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    print("📩 JSON recebido:", data)
+    logger.info("📩 JSON recebido: %s", data)
 
     try:
         phone = data.get("participantPhone") or data.get("phone", "")
@@ -56,7 +70,7 @@ def webhook():
             if is_group and (participant != NUMERO_DIRETO and NUMERO_DIRETO not in text_message):
                 return "", 200
 
-            if verificar_palavra_chave(text_message):
+            if text_message.strip().startswith("#"):
                 resposta = comando_direto(text_message)
             else:
                 resposta = analisar_mensagem(text_message)
@@ -67,12 +81,9 @@ def webhook():
                 enviar_resposta(phone, resposta)
 
     except Exception as e:
-        print("❌ Erro ao processar mensagem:", str(e))
+        logger.error("❌ Erro ao processar mensagem: %s", str(e))
 
     return "", 200
-
-def verificar_palavra_chave(msg):
-    return msg.strip().lower().startswith("#")
 
 def comando_direto(msg):
     comandos = {
@@ -80,7 +91,7 @@ def comando_direto(msg):
         "#agendar": "Você pode agendar um horário com o Dr. Dayan pelo link: https://calendly.com/daan-advgoias",
         "#valores": "Nossos honorários são personalizados conforme a complexidade do caso. Envie mais detalhes para análise."
     }
-    return comandos.get(msg.strip().lower(), "Comando não reconhecido. Por favor, envie sua dúvida ou solicitação.")
+    return comandos.get(msg.strip().lower(), "Comando não reconhecido. Envie sua dúvida ou utilize um dos comandos válidos: #contrato, #agendar, #valores.")
 
 def analisar_mensagem(texto):
     prompt = PROMPT_BASE.format(mensagem=texto.strip())
@@ -98,8 +109,8 @@ def analisar_mensagem(texto):
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        print("❌ Erro ao gerar resposta com OpenAI:", str(e))
-        return "Recebi sua mensagem, mas ainda não consegui interpretar totalmente. Em breve, nossa equipe entrará em contato para atendimento personalizado."
+        logger.error("❌ Erro com OpenAI: %s", str(e))
+        return "Recebi sua mensagem, mas ainda não consegui interpretar totalmente. Em breve, nossa equipe entrará em contato."
 
 def precisa_atendimento_humano(numero, msg):
     historico = HISTORICO_CLIENTES.get(numero, {"repeticoes": 0, "ultima": "", "hora": datetime.now()})
@@ -118,17 +129,16 @@ def enviar_resposta(numero, mensagem):
         "message": mensagem
     }
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Client-Token": ZAPI_TOKEN
     }
 
     try:
         response = requests.post(ZAPI_URL, json=payload, headers=headers)
-        print(f"✅ Mensagem enviada para {numero}")
-        print("Mensagem:", mensagem)
-        print("Status Z-API:", response.status_code)
-        print("Retorno Z-API:", response.text)
+        logger.info("✅ Mensagem enviada para %s - Status: %s", numero, response.status_code)
+        logger.info("Resposta: %s", response.text)
     except Exception as e:
-        print("❌ Erro ao enviar mensagem:", str(e))
+        logger.error("❌ Erro ao enviar mensagem: %s", str(e))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
