@@ -6,8 +6,6 @@ import openai
 import requests
 
 app = Flask(__name__)
-
-# Carrega variáveis do .env
 load_dotenv()
 
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
@@ -19,11 +17,11 @@ ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Contatos e grupos bloqueados
+# Lista de bloqueio por nome de contato e grupo
 bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
-# Carrega blocos de resposta automática
+# Carrega respostas automáticas de bloco
 try:
     with open("blocos_respostas.json", "r", encoding="utf-8") as file:
         respostas_automaticas = json.load(file)
@@ -49,12 +47,12 @@ def responder_com_bloco(msg):
 def gerar_resposta_gpt(mensagem):
     try:
         prompt = f"""
-Você é o Dr. Dayan, advogado responsável pelo escritório Teixeira.Brito Advogados, especialista em contratos, sucessões, holding familiar e renegociação de dívidas.
+Você é o Dr. Dayan, advogado do escritório Teixeira.Brito Advogados, especialista em contratos, sucessões, holding familiar e renegociação de dívidas.
 
-Mensagem recebida do cliente:
+Mensagem recebida:
 "{mensagem}"
 
-Responda como se fosse o próprio Dr. Dayan. Use um tom direto, claro, profissional e empático. Oriente o cliente com seriedade, como um advogado de confiança.
+Responda com clareza, profissionalismo e empatia. Seja direto como um advogado confiável, experiente e cordial.
 """
         response = client.chat.completions.create(
             model="gpt-4",
@@ -71,17 +69,14 @@ Responda como se fosse o próprio Dr. Dayan. Use um tom direto, claro, profissio
         return None
 
 def enviar_zapi(phone, message):
-    payload = {
-        "phone": phone,
-        "message": message
-    }
+    payload = {"phone": phone, "message": message}
     headers = {
         "Content-Type": "application/json",
         "Client-Token": ZAPI_TOKEN
     }
     try:
-        response = requests.post(ZAPI_URL, json=payload, headers=headers)
-        print(f"✅ Enviado para {phone} | Status: {response.status_code} | Resposta: {response.text}")
+        r = requests.post(ZAPI_URL, json=payload, headers=headers)
+        print(f"✅ Enviado para {phone} | Status: {r.status_code} | Resposta: {r.text}")
     except Exception as e:
         print("❌ Erro ao enviar pela Z-API:", str(e))
 
@@ -95,24 +90,29 @@ def responder():
         data = request.json or {}
         print("📩 JSON recebido:", data)
 
+        # Captura da mensagem: texto direto, imagem ou documento
         mensagem = data.get("message", "").strip() \
-            or data.get("text", {}).get("body", "") \
             or data.get("text", {}).get("message", "") \
+            or data.get("text", {}).get("body", "") \
             or data.get("image", {}).get("caption", "") \
             or data.get("document", {}).get("caption", "") \
             or ""
 
-        # ✅ Lógica segura para capturar telefone correto
-        if data.get("isGroup", False):
-            telefone = data.get("participantPhone", "")
+        if not mensagem:
+            print("⚠️ Mensagem ausente.")
+            return jsonify({"response": None})
+
+        # 📞 Captura segura do telefone
+        if data.get("isGroup", False) and data.get("participantPhone"):
+            telefone = data["participantPhone"]
         else:
-            telefone = data.get("senderPhone") or data.get("phone") or ""
+            telefone = data.get("senderPhone") or data.get("phone", "")
 
         nome = data.get("senderName", "")
         grupo = data.get("groupName", "")
 
-        if not mensagem or not telefone:
-            print("⚠️ Mensagem ou telefone ausente.")
+        if not telefone:
+            print("⚠️ Telefone ausente.")
             return jsonify({"response": None})
 
         if telefone == NUMERO_INSTANCIA:
@@ -120,7 +120,7 @@ def responder():
             return jsonify({"response": None})
 
         if nome in bloqueados or grupo in grupos_bloqueados:
-            print(f"⛔ Ignorado: contato ou grupo bloqueado ({nome or grupo})")
+            print(f"⛔ Ignorado: bloqueado ({nome or grupo})")
             return jsonify({"response": None})
 
         tipo = detectar_assunto(mensagem)
@@ -132,6 +132,7 @@ def responder():
                 return jsonify({"response": resposta})
 
         return jsonify({"response": None})
+
     except Exception as e:
         print("❌ Erro geral:", str(e))
         return jsonify({"error": "Erro interno"}), 500
