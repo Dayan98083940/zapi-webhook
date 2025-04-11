@@ -12,15 +12,13 @@ ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 NUMERO_INSTANCIA = os.getenv("NUMERO_INSTANCIA")
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 
+ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Contatos e grupos bloqueados
 bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
 grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
-# Carrega blocos de resposta automática
 try:
     with open("blocos_respostas.json", "r", encoding="utf-8") as file:
         respostas_automaticas = json.load(file)
@@ -29,10 +27,8 @@ except Exception as e:
     respostas_automaticas = []
 
 def detectar_assunto(msg):
-    termos = [
-        "contrato", "holding", "divórcio", "herança", "inventário",
-        "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"
-    ]
+    termos = ["contrato", "holding", "divórcio", "herança", "inventário",
+              "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"]
     msg = msg.lower()
     return "profissional" if any(t in msg for t in termos) else "particular"
 
@@ -46,12 +42,12 @@ def responder_com_bloco(msg):
 def gerar_resposta_gpt(mensagem):
     try:
         prompt = f"""
-Você é o Dr. Dayan, advogado do escritório Teixeira.Brito Advogados, especialista em contratos, sucessões, holding familiar e renegociação de dívidas.
+Você é o Dr. Dayan, advogado responsável pelo escritório Teixeira.Brito Advogados.
 
 Mensagem recebida:
 "{mensagem}"
 
-Responda com clareza, profissionalismo e empatia. Seja direto como um advogado confiável, experiente e cordial.
+Responda com clareza, profissionalismo e empatia. Seja direto como um advogado confiável e experiente.
 """
         response = client.chat.completions.create(
             model="gpt-4",
@@ -59,8 +55,8 @@ Responda com clareza, profissionalismo e empatia. Seja direto como um advogado c
                 {"role": "system", "content": "Você é o Dr. Dayan, advogado especialista em direito civil e empresarial."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=500,
-            temperature=0.5
+            max_tokens=400,
+            temperature=0.4
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
@@ -100,7 +96,8 @@ def responder():
             print("⚠️ Mensagem ausente.")
             return jsonify({"response": None})
 
-        # 📞 Pega o número correto (grupo ou privado)
+        # Corrigido: identificação correta do número para envio
+        telefone = ""
         if data.get("isGroup", False) and data.get("participantPhone"):
             telefone = data["participantPhone"]
         else:
@@ -118,7 +115,7 @@ def responder():
             return jsonify({"response": None})
 
         if nome in bloqueados or grupo in grupos_bloqueados:
-            print(f"⛔ Ignorado: bloqueado ({nome or grupo})")
+            print(f"⛔ Ignorado: contato ou grupo bloqueado ({nome or grupo})")
             return jsonify({"response": None})
 
         tipo = detectar_assunto(mensagem)
@@ -134,4 +131,3 @@ def responder():
         return jsonify({"error": "Erro interno"}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
