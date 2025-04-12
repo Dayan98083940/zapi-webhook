@@ -27,6 +27,12 @@ def horario_comercial():
     hora = agora().hour
     return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
 
+import re
+
+def remover_emojis(texto):
+    # Remove qualquer emoji ou caractere não ASCII
+    return re.sub(r'[^\x00-\x7F]+', '', texto)
+
 def enviar_para_whatsapp(numero, mensagem):
     if not numero:
         print("⚠️ Número vazio. Mensagem não enviada.")
@@ -35,13 +41,16 @@ def enviar_para_whatsapp(numero, mensagem):
         headers = {
             "Content-Type": "application/json"
         }
-        # Remove quebras de linha e emojis que possam causar erro
-        texto = mensagem.replace("\n", " ").strip()
+
+        texto_limpo = remover_emojis(mensagem.replace("\n", " ").strip())
 
         payload = {
             "phone": numero.strip(),
-            "message": texto
+            "message": texto_limpo
         }
+
+        # Remover campos nulos ou vazios
+        payload = {k: v for k, v in payload.items() if v}
 
         print("📦 Payload a ser enviado para Z-API:")
         print(json.dumps(payload, indent=2, ensure_ascii=False))
