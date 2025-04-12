@@ -4,3 +4,4 @@ requests==2.32.3
 python-dotenv==1.1.0
 fpdf==1.7.2
 gunicorn==21.2.0
+emoji==2.10.0
