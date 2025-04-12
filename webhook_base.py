@@ -8,7 +8,10 @@ app = Flask(__name__)
 
 # ========== CONFIGURAÇÕES ==========
 openai.api_key = os.getenv("OPENAI_API_KEY")
-EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN", "seu_token_aqui")
+EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
+
+if not openai.api_key or not EXPECTED_CLIENT_TOKEN:
+    raise Exception("As variáveis OPENAI_API_KEY e CLIENT_TOKEN precisam estar definidas.")
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
@@ -19,7 +22,7 @@ LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
 ARQUIVO_CONTROLE = "controle_interacoes.json"
 
-# ========== HISTÓRICO DE INTERAÇÕES ==========
+# ========== CARREGAR HISTÓRICO ==========
 def carregar_controle():
     try:
         with open(ARQUIVO_CONTROLE, "r", encoding="utf-8") as f:
@@ -33,16 +36,16 @@ def salvar_controle(dados):
 
 controle = carregar_controle()
 
-# ========== FUNÇÕES DE CONTROLE ==========
+# ========== FUNÇÕES UTILITÁRIAS ==========
 def agora():
     return datetime.now()
 
 def hoje():
-    return datetime.now().strftime("%Y-%m-%d")
+    return agora().strftime("%Y-%m-%d")
 
 def horario_comercial():
-    dia = datetime.now().strftime("%A").lower()
-    hora = datetime.now().hour
+    dia = agora().strftime("%A").lower()
+    hora = agora().hour
     return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
 
 def foi_atendido_hoje(contato):
@@ -70,10 +73,8 @@ def pausado_por_interacao(contato):
 def deve_responder(contato):
     if pausado_por_interacao(contato):
         return False
-    if not horario_comercial() and foi_atendido_hoje(contato):
-        return False
-    if horario_comercial() and foi_atendido_hoje(contato):
-        return False
+    if foi_atendido_hoje(contato):
+        return not horario_comercial()  # só responde fora do horário se for urgente
     return True
 
 def foi_mencionado(mensagem):
@@ -83,18 +84,19 @@ def foi_mencionado(mensagem):
 # ========== GPT-4 ==========
 def analisar_com_gpt(mensagem, nome):
     prompt = f"""
-Você é um assistente jurídico em nome do Dr. Dayan.
+Você é um assistente jurídico representando o Dr. Dayan.
 
-Analise a mensagem recebida abaixo:
-- Determine se é pessoal, profissional ou urgente
-- Caso pessoal → responda: IGNORAR
-- Caso urgente fora do horário → forneça o número direto: {CONTATO_DIRETO}
-- Caso profissional fora do horário → ofereça agendamento via Calendly: {LINK_CALENDLY}
-- Caso profissional no horário → responda com empatia e linguagem formal
+Funções:
+1. Identifique se a mensagem é pessoal, profissional ou urgente.
+2. Se for pessoal ou irrelevante, responda com: IGNORAR.
+3. Se for urgente e fora do horário, oriente a entrar em contato imediato via: {CONTATO_DIRETO}.
+4. Se for profissional mas fora do horário, ofereça o link de agendamento: {LINK_CALENDLY}.
+5. Se for profissional e dentro do horário, responda com linguagem educada, empática e formal. Use "Sr.", "Sra.", "Dr.", etc.
 
 Mensagem:
 "{mensagem}"
-De: {nome}
+
+Nome do remetente: {nome}
 """
     resposta = openai.ChatCompletion.create(
         model="gpt-4",
@@ -108,8 +110,11 @@ De: {nome}
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Client-Token")
+
+    if not token:
+        return jsonify({"error": "Cabeçalho 'Client-Token' ausente"}), 403
     if token != EXPECTED_CLIENT_TOKEN:
-        return jsonify({"error": "Unauthorized"}), 403
+        return jsonify({"error": "Token inválido"}), 403
 
     data = request.json
     nome = data.get("senderName", "")
@@ -118,15 +123,15 @@ def webhook():
     contato = grupo or nome
     is_grupo = bool(grupo)
 
-    # Regra para grupos: só responde com menção
+    # Regras para grupos: só responde se for mencionado
     if is_grupo and not foi_mencionado(mensagem):
         return jsonify({"response": None})
 
-    # Não responde se você interagiu recentemente
+    # Verifica se deve responder com base na sua interação ou limite diário
     if not deve_responder(contato):
         return jsonify({"response": None})
 
-    # Analisa com GPT
+    # Analisar com IA
     resposta = analisar_com_gpt(mensagem, nome)
 
     if resposta.strip().upper() == "IGNORAR":
@@ -135,7 +140,7 @@ def webhook():
     marcar_resposta(contato)
     return jsonify({"response": resposta})
 
-# ========== ROTA OPCIONAL PARA REGISTRAR SUA INTERAÇÃO MANUAL ==========
+# ========== REGISTRAR INTERAÇÃO MANUAL ==========
 @app.route("/registrar-manual", methods=["POST"])
 def registrar_manual():
     data = request.json
