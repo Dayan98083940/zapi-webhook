@@ -2,20 +2,26 @@ from flask import Flask, request, jsonify
 import os
 import json
 import openai
-from datetime import datetime, timedelta
 import traceback
+import requests
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# === CONFIGURAÇÕES ===
+# === VARIÁVEIS DE AMBIENTE ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or os.getenv("TOKEN_DA_INSTANCIA")
+ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 
 if not openai.api_key:
     print("⚠️ OPENAI_API_KEY não definida.")
 if not EXPECTED_CLIENT_TOKEN:
     print("⚠️ CLIENT_TOKEN não definido.")
+if not ZAPI_INSTANCE_ID or not ZAPI_TOKEN:
+    print("⚠️ ZAPI_INSTANCE_ID ou ZAPI_TOKEN não definidos.")
 
+# === CONSTANTES DE CONTROLE ===
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
 DIAS_UTEIS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
@@ -23,6 +29,22 @@ DIAS_UTEIS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
 CONTATO_DIRETO = "+55 62 99808-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ARQUIVO_CONTROLE = "controle_interacoes.json"
+
+# === FUNÇÃO PARA ENVIO WHATSAPP ===
+def enviar_para_whatsapp(numero, mensagem):
+    try:
+        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+        payload = {
+            "phone": numero,
+            "message": mensagem
+        }
+        headers = {
+            "Content-Type": "application/json"
+        }
+        response = requests.post(url, json=payload, headers=headers)
+        print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"❌ Erro ao enviar mensagem: {e}")
 
 # === CONTROLE DE INTERAÇÕES ===
 def carregar_controle():
@@ -72,7 +94,7 @@ def foi_mencionado(mensagem):
     texto = mensagem.lower()
     return any(trigger in texto for trigger in ["@dayan", "dr. dayan", "doutor dayan", "doutora dayan"])
 
-# === GERA RESPOSTA HUMANIZADA COM GPT ===
+# === GERA RESPOSTA GPT ===
 def gerar_resposta(mensagem, nome, fora_horario=False):
     if fora_horario:
         return (
@@ -120,6 +142,7 @@ def webhook():
     nome = data.get("senderName", "")
     grupo = data.get("groupName", "")
     mensagem = data.get("message", "")
+    numero = data.get("sender", "")
     contato = grupo or nome
     is_grupo = bool(grupo)
 
@@ -135,13 +158,14 @@ def webhook():
         return jsonify({"response": None})
 
     if "contrato" in mensagem.lower():
-        resposta = "Perfeito, podemos te ajudar com isso. Você deseja um contrato imobiliário, empresarial ou outro?"
+        resposta = "Certo, qual contrato? Fale mais sobre o negócio jurídico que deseja formalizar para que possamos entender melhor sua necessidade."
     elif not horario_comercial():
         resposta = gerar_resposta(mensagem, nome, fora_horario=True)
     else:
         resposta = gerar_resposta(mensagem, nome)
 
     marcar_resposta(contato)
+    enviar_para_whatsapp(numero, resposta)
     return jsonify({"response": resposta})
 
 # === ROTA DE STATUS ===
@@ -159,7 +183,7 @@ def rota_nao_encontrada(e):
         "error": "Rota não encontrada. Use /webhook para POSTs válidos."
     }), 404
 
-# === EXECUÇÃO ===
+# === EXECUÇÃO LOCAL ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
