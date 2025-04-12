@@ -13,7 +13,7 @@ EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or os.getenv("TOKEN_DA_INSTANC
 if not openai.api_key:
     print("⚠️ AVISO: OPENAI_API_KEY não definida. Verifique a Render.")
 if not EXPECTED_CLIENT_TOKEN:
-    print("⚠️ AVISO: CLIENT_TOKEN (ou TOKEN_DA_INSTANCIA) não definido.")
+    print("⚠️ AVISO: CLIENT_TOKEN ou TOKEN_DA_INSTANCIA não definida.")
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
@@ -111,7 +111,7 @@ Remetente: {nome}
         print(f"❌ Erro ao consultar o GPT: {e}")
         return "Desculpe, houve um erro ao processar sua solicitação."
 
-# ========== WEBHOOK ==========
+# ========== ROTA PRINCIPAL ==========
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Client-Token")
@@ -142,7 +142,15 @@ def webhook():
     marcar_resposta(contato)
     return jsonify({"response": resposta})
 
-# ========== REGISTRO MANUAL ==========
+# ========== ROTA DE STATUS ==========
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "status": "online",
+        "message": "Servidor do Webhook Dr. Dayan ativo ✅"
+    })
+
+# ========== ROTA PARA TESTE MANUAL ==========
 @app.route("/registrar-manual", methods=["POST"])
 def registrar_manual():
     data = request.json
@@ -151,6 +159,13 @@ def registrar_manual():
         return jsonify({"error": "Contato é obrigatório"}), 400
     registrar_interacao_manual(contato)
     return jsonify({"status": "Registrado com sucesso."})
+
+# ========== TRATAMENTO GLOBAL DE 404 ==========
+@app.errorhandler(404)
+def page_not_found(e):
+    return jsonify({
+        "error": "Rota não encontrada. Use /webhook para POSTs válidos."
+    }), 404
 
 # ========== EXECUÇÃO ==========
 if __name__ == "__main__":
