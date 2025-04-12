@@ -1,1 +1,1 @@
-web: gunicorn webhook_base:app
+web: python webhook_base.py
