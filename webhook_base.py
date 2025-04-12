@@ -1,90 +1,53 @@
 from flask import Flask, request, jsonify
-import os
 import json
-from dotenv import load_dotenv
-import requests
+import os
 
 app = Flask(__name__)
-load_dotenv()
 
-ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
-ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
-NUMERO_INSTANCIA = os.getenv("NUMERO_INSTANCIA")  # Ex: 5562998083940
-ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
+# Tokens de segurança
+EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN", "seu_token_aqui")
 
-# ✅ Header obrigatório para Z-API
-HEADERS = {
-    "Content-Type": "application/json",
-    "Client-Token": ZAPI_TOKEN
-}
+# Bloqueios
+bloqueados = ["Amor", "João Manoel", "Pedro Dávila", "Pai", "Mab", "Helder", "Érika", "Felipe"]
+grupos_bloqueados = ["Sagrada Família", "Providência Santa"]
 
-# Carrega respostas automáticas
-try:
-    with open("blocos_respostas.json", "r", encoding="utf-8") as file:
-        blocos = json.load(file)
-except Exception as e:
-    print(f"Erro ao carregar blocos_respostas.json: {e}")
-    blocos = []
+# Carregar respostas do JSON
+with open('blocos_respostas.json', encoding='utf-8') as f:
+    blocos_respostas = json.load(f)
 
-@app.route("/", methods=["GET"])
-def status():
-    return jsonify({"status": "ativo", "message": "Webhook jurídico online"}), 200
+def detectar_resposta(msg):
+    msg = msg.lower()
+    for bloco in blocos_respostas:
+        if bloco.get("trigger") and bloco["trigger"].lower() in msg:
+            return bloco["response"]
+        for palavra in bloco["keywords"]:
+            if palavra.lower() in msg:
+                return bloco["response"]
+    return None
 
-@app.route("/webhook", methods=["POST"])
-def receber():
-    try:
-        data = request.json or {}
-        print("📩 JSON recebido:", data)
+@app.route('/webhook', methods=['POST'])
+def responder():
+    # Verifica token no header
+    client_token = request.headers.get('Client-Token')
+    if client_token != EXPECTED_CLIENT_TOKEN:
+        return jsonify({"error": "Unauthorized"}), 403
 
-        mensagem = (
-            data.get("message") or
-            data.get("text", {}).get("message") or
-            data.get("text", {}).get("body") or
-            data.get("image", {}).get("caption") or
-            data.get("document", {}).get("caption") or
-            ""
-        ).strip().lower()
+    data = request.json
+    nome = data.get("senderName", "")
+    grupo = data.get("groupName", "")
+    mensagem = data.get("message", "")
+    historico = data.get("messageCount", 1)
 
-        if not mensagem:
-            return jsonify({"response": None})
-
-        telefone = data.get("senderPhone") or data.get("phone", "")
-        nome = data.get("senderName", "")
-        grupo = data.get("groupName", "")
-        is_group = data.get("isGroup", False)
-
-        # Ignora mensagens sem remetente ou número da instância
-        if not telefone or telefone == NUMERO_INSTANCIA:
-            return jsonify({"response": None})
-
-        # ✅ Só responde em grupo se o número da instância for mencionado
-        if is_group and NUMERO_INSTANCIA not in mensagem:
-            return jsonify({"response": None})
-
-        # ✅ Analisa mensagem por palavras-chave nos blocos
-        for bloco in blocos:
-            for termo in bloco.get("keywords", []):
-                if termo in mensagem:
-                    resposta = bloco.get("response")
-                    if resposta:
-                        enviar_zapi(telefone, resposta)
-                        return jsonify({"response": resposta})
-
+    if nome in bloqueados or grupo in grupos_bloqueados:
         return jsonify({"response": None})
-    except Exception as e:
-        print(f"❌ Erro ao processar webhook: {e}")
-        return jsonify({"error": "Erro interno"}), 500
 
-def enviar_zapi(phone, message):
-    payload = {
-        "phone": phone,
-        "message": message
-    }
-    try:
-        resposta = requests.post(ZAPI_URL, json=payload, headers=HEADERS)
-        print(f"✅ Enviado para {phone} | Status: {resposta.status_code} | Resposta: {resposta.text}")
-    except Exception as e:
-        print(f"❌ Erro ao enviar mensagem Z-API: {e}")
+    if historico > 1:
+        return jsonify({"response": None})
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    resposta = detectar_resposta(mensagem)
+    if resposta:
+        return jsonify({"response": resposta})
+    return jsonify({"response": None})
+
+if __name__ == '__main__':
+    app.run(port=5000)
