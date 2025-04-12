@@ -1,8 +1,9 @@
-from flask import Flask, request, jsonify
+ffrom flask import Flask, request, jsonify
 import os
 import json
 import openai
 from datetime import datetime, timedelta
+import traceback
 
 app = Flask(__name__)
 
@@ -17,7 +18,7 @@ if not EXPECTED_CLIENT_TOKEN:
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
-DIAS_UTEIS = ["segunda", "terça", "quarta", "quinta", "sexta"]
+DIAS_UTEIS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
 
 CONTATO_DIRETO = "+55 62 99808-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
@@ -102,6 +103,7 @@ Remetente: {nome}
         )
         return resposta.choices[0].message.content.strip()
     except Exception as e:
+        traceback.print_exc()
         print(f"❌ Erro ao gerar resposta com GPT: {e}")
         return "Desculpe, houve um erro ao processar sua solicitação."
 
@@ -109,19 +111,23 @@ Remetente: {nome}
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Client-Token")
+    print(f"🔐 Token recebido: {token}")
+    
     if not token:
         return jsonify({"error": "Cabeçalho 'Client-Token' ausente."}), 403
     if token != EXPECTED_CLIENT_TOKEN:
         return jsonify({"error": "Token inválido."}), 403
 
     data = request.json
+    print("📥 Dados recebidos:", json.dumps(data, indent=2, ensure_ascii=False))
+
     nome = data.get("senderName", "")
     grupo = data.get("groupName", "")
     mensagem = data.get("message", "")
     contato = grupo or nome
     is_grupo = bool(grupo)
 
-    print(f"📩 Mensagem recebida de: {nome} | Grupo: {grupo or 'Privado'}")
+    print(f"📩 Mensagem de: {nome} | Grupo: {grupo or 'Privado'}")
     print(f"📨 Conteúdo: {mensagem}")
 
     if is_grupo and not foi_mencionado(mensagem):
@@ -132,7 +138,10 @@ def webhook():
         print("⏸️ IA pausada por interação manual.")
         return jsonify({"response": None})
 
-    if not horario_comercial():
+    # Resposta rápida por palavra-chave (opcional)
+    if "contrato" in mensagem.lower():
+        resposta = "Perfeito, podemos te ajudar com isso. Você deseja um contrato imobiliário, empresarial ou outro?"
+    elif not horario_comercial():
         resposta = gerar_resposta(mensagem, nome, fora_horario=True)
     else:
         resposta = gerar_resposta(mensagem, nome)
