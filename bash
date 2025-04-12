@@ -8,3 +8,6 @@ Body:
 }
 POST /webhook 200
 pip install emoji
+source venv/bin/activate     # Linux/macOS
+venv\Scripts\activate.bat    # Windows
+python -c "import emoji; print(emoji.replace_emoji('Olá 😊 mundo!', replace=''))"
