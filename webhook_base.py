@@ -35,13 +35,18 @@ def enviar_para_whatsapp(numero, mensagem):
         headers = {
             "Content-Type": "application/json"
         }
-        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
-        payload = {k: v for k, v in {
-            "phone": numero,
-            "message": mensagem
-        }.items() if v}
+        # Remove quebras de linha e emojis que possam causar erro
+        texto = mensagem.replace("\n", " ").strip()
+
+        payload = {
+            "phone": numero.strip(),
+            "message": texto
+        }
+
         print("📦 Payload a ser enviado para Z-API:")
         print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
         response = requests.post(url, json=payload, headers=headers)
         print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
     except Exception as e:
