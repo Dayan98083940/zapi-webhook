@@ -39,7 +39,9 @@ def enviar_para_whatsapp(numero, mensagem):
         payload = {k: v for k, v in {
             "phone": numero,
             "message": mensagem
-        }.items() if v is not None}
+        }.items() if v}
+        print("📦 Payload a ser enviado para Z-API:")
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
         response = requests.post(url, json=payload, headers=headers)
         print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
     except Exception as e:
