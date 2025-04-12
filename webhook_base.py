@@ -1,3 +1,4 @@
+
 from flask import Flask, request, jsonify
 import os
 import json
@@ -93,16 +94,28 @@ def foi_mencionado(mensagem):
 def gerar_resposta(mensagem, nome, fora_horario=False):
     if fora_horario:
         return (
-            f"Olá, {nome}. Agradeço pelo contato.\n\n"
-            f"No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).\n"
-            f"Você pode agendar um horário para amanhã no link abaixo, ou me enviar uma mensagem caso seja urgente:\n"
-            f"📅 {LINK_CALENDLY}\n📞 {CONTATO_DIRETO}"
+            f"Olá, {nome}. Agradeço pelo contato.
+
+"
+            f"No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).
+"
+            f"Você pode agendar um horário para amanhã no link abaixo, ou me enviar uma mensagem caso seja urgente:
+"
+            f"📅 {LINK_CALENDLY}
+📞 {CONTATO_DIRETO}"
         )
     prompt = (
-        f"Você é um assistente jurídico representando o advogado Dr. Dayan.\n"
-        f"Seu papel é iniciar o atendimento de forma humanizada, acolhedora e respeitosa.\n"
-        f"Nunca forneça pareceres jurídicos, mas ofereça o primeiro acolhimento e, quando necessário, redirecione para o agendamento com o Dr. Dayan ou para contato direto.\n\n"
-        f"Mensagem recebida:\n\"{mensagem}\"\n\nRemetente: {nome}"
+        f"Você é um assistente jurídico representando o advogado Dr. Dayan.
+"
+        f"Seu papel é iniciar o atendimento de forma humanizada, acolhedora e respeitosa.
+"
+        f"Nunca forneça pareceres jurídicos, mas ofereça o primeiro acolhimento e, quando necessário, redirecione para o agendamento com o Dr. Dayan ou para contato direto.
+
+"
+        f"Mensagem recebida:
+"{mensagem}"
+
+Remetente: {nome}"
     )
     try:
         resposta = openai.ChatCompletion.create(
