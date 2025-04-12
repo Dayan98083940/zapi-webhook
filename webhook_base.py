@@ -8,11 +8,13 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
+# === VARIÁVEIS DE AMBIENTE ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or os.getenv("TOKEN_DA_INSTANCIA")
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 
+# === VERIFICAÇÕES INICIAIS ===
 if not openai.api_key:
     print("⚠️ OPENAI_API_KEY não definida.")
 if not EXPECTED_CLIENT_TOKEN:
@@ -20,6 +22,7 @@ if not EXPECTED_CLIENT_TOKEN:
 if not ZAPI_INSTANCE_ID or not ZAPI_TOKEN:
     print("⚠️ ZAPI_INSTANCE_ID ou ZAPI_TOKEN não definidos.")
 
+# === CONFIGURAÇÕES ===
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
 DIAS_UTEIS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
@@ -28,14 +31,15 @@ CONTATO_DIRETO = "+55 62 99808-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ARQUIVO_CONTROLE = "controle_interacoes.json"
 
+# === FUNÇÕES DE APOIO ===
 def enviar_para_whatsapp(numero, mensagem):
     if not numero:
         print("⚠️ Número vazio. Mensagem não enviada.")
         return
     try:
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
-        payload = { "phone": numero, "message": mensagem }
-        headers = { "Content-Type": "application/json" }
+        payload = {"phone": numero, "message": mensagem}
+        headers = {"Content-Type": "application/json"}
         response = requests.post(url, json=payload, headers=headers)
         print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
     except Exception as e:
@@ -45,7 +49,7 @@ def carregar_controle():
     try:
         with open(ARQUIVO_CONTROLE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except:
         return {}
 
 def salvar_controle(dados):
@@ -117,6 +121,7 @@ Você pode agendar um horário para amanhã no link abaixo, ou me enviar uma men
         print(f"❌ Erro ao gerar resposta com GPT: {e}")
         return "Desculpe, houve um erro ao processar sua solicitação."
 
+# === ROTA PRINCIPAL ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     r"""
@@ -126,7 +131,7 @@ def webhook():
       Client-Token: seu-token-aqui
       Content-Type: application/json
 
-    Body (JSON):
+    Body:
     {
       "sender": "556299999999",
       "senderName": "João",
@@ -171,6 +176,7 @@ def webhook():
     enviar_para_whatsapp(numero, resposta)
     return jsonify({"response": resposta})
 
+# === ROTA DE STATUS ===
 @app.route("/", methods=["GET"])
 def status():
     return jsonify({
