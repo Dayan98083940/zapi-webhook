@@ -111,34 +111,29 @@ Remetente: {nome}
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Client-Token")
-    print(f"🔐 Token recebido: {token}")
-    
     if not token:
         return jsonify({"error": "Cabeçalho 'Client-Token' ausente."}), 403
     if token != EXPECTED_CLIENT_TOKEN:
         return jsonify({"error": "Token inválido."}), 403
 
-    data = request.json
-    print("📥 Dados recebidos:", json.dumps(data, indent=2, ensure_ascii=False))
-
+    data = request.json or {}
     nome = data.get("senderName", "")
     grupo = data.get("groupName", "")
     mensagem = data.get("message", "")
     contato = grupo or nome
     is_grupo = bool(grupo)
 
-    print(f"📩 Mensagem de: {nome} | Grupo: {grupo or 'Privado'}")
-    print(f"📨 Conteúdo: {mensagem}")
+    print(f"📩 {nome} | {'Grupo' if is_grupo else 'Privado'}")
+    print(f"📨 Mensagem: {mensagem}")
 
     if is_grupo and not foi_mencionado(mensagem):
-        print("🔕 Ignorado: mensagem em grupo sem menção.")
+        print("🔕 Ignorado: grupo sem menção direta.")
         return jsonify({"response": None})
 
     if pausado_por_interacao(contato):
         print("⏸️ IA pausada por interação manual.")
         return jsonify({"response": None})
 
-    # Resposta rápida por palavra-chave (opcional)
     if "contrato" in mensagem.lower():
         resposta = "Perfeito, podemos te ajudar com isso. Você deseja um contrato imobiliário, empresarial ou outro?"
     elif not horario_comercial():
@@ -147,7 +142,6 @@ def webhook():
         resposta = gerar_resposta(mensagem, nome)
 
     marcar_resposta(contato)
-    print(f"✅ Resposta enviada: {resposta[:100]}...")
     return jsonify({"response": resposta})
 
 # === ROTA DE STATUS ===
@@ -167,5 +161,5 @@ def rota_nao_encontrada(e):
 
 # === EXECUÇÃO ===
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
