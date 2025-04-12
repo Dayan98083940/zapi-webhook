@@ -6,15 +6,16 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# ========== CONFIGURAÇÕES ==========
+# === VARIÁVEIS DE AMBIENTE ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or os.getenv("TOKEN_DA_INSTANCIA")
 
 if not openai.api_key:
-    print("⚠️ AVISO: OPENAI_API_KEY não definida. Verifique a Render.")
+    print("⚠️ AVISO: OPENAI_API_KEY não definida.")
 if not EXPECTED_CLIENT_TOKEN:
-    print("⚠️ AVISO: CLIENT_TOKEN ou TOKEN_DA_INSTANCIA não definida.")
+    print("⚠️ AVISO: CLIENT_TOKEN não definida.")
 
+# === CONFIGURAÇÕES ===
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
 DIAS_UTEIS = ["segunda", "terça", "quarta", "quinta", "sexta"]
@@ -23,7 +24,7 @@ CONTATO_DIRETO = "+55 62 99808-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ARQUIVO_CONTROLE = "controle_interacoes.json"
 
-# ========== HISTÓRICO ==========
+# === CONTROLE DE INTERAÇÕES ===
 def carregar_controle():
     try:
         with open(ARQUIVO_CONTROLE, "r", encoding="utf-8") as f:
@@ -37,7 +38,6 @@ def salvar_controle(dados):
 
 controle = carregar_controle()
 
-# ========== FUNÇÕES ==========
 def agora():
     return datetime.now()
 
@@ -82,7 +82,7 @@ def foi_mencionado(mensagem):
     texto = mensagem.lower()
     return any(trigger in texto for trigger in ["@dayan", "dr. dayan", "doutor dayan", "doutora dayan"])
 
-# ========== GPT ==========
+# === GPT-4 ===
 def analisar_com_gpt(mensagem, nome):
     prompt = f"""
 Você é um assistente jurídico representando o Dr. Dayan.
@@ -111,7 +111,7 @@ Remetente: {nome}
         print(f"❌ Erro ao consultar o GPT: {e}")
         return "Desculpe, houve um erro ao processar sua solicitação."
 
-# ========== ROTA PRINCIPAL ==========
+# === ROTA PRINCIPAL ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Client-Token")
@@ -142,15 +142,15 @@ def webhook():
     marcar_resposta(contato)
     return jsonify({"response": resposta})
 
-# ========== ROTA DE STATUS ==========
+# === ROTA DE STATUS ===
 @app.route("/", methods=["GET"])
-def home():
+def status():
     return jsonify({
         "status": "online",
         "message": "Servidor do Webhook Dr. Dayan ativo ✅"
     })
 
-# ========== ROTA PARA TESTE MANUAL ==========
+# === ROTA PARA REGISTRAR INTERAÇÃO MANUAL ===
 @app.route("/registrar-manual", methods=["POST"])
 def registrar_manual():
     data = request.json
@@ -160,14 +160,14 @@ def registrar_manual():
     registrar_interacao_manual(contato)
     return jsonify({"status": "Registrado com sucesso."})
 
-# ========== TRATAMENTO GLOBAL DE 404 ==========
+# === TRATAMENTO DE 404 ===
 @app.errorhandler(404)
-def page_not_found(e):
+def rota_nao_encontrada(e):
     return jsonify({
         "error": "Rota não encontrada. Use /webhook para POSTs válidos."
     }), 404
 
-# ========== EXECUÇÃO ==========
+# === EXECUÇÃO ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
