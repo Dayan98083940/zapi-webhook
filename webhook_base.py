@@ -1,200 +1,117 @@
 from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 import os
 import json
-from dotenv import load_dotenv
-import openai
 import requests
-from fpdf import FPDF
-from datetime import datetime
+import openai
+
+load_dotenv()
 
 app = Flask(__name__)
-load_dotenv()
 
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-NUMERO_INSTANCIA = os.getenv("NUMERO_INSTANCIA")  # Ex: 5562998083940
-NUMERO_RELATORIO = "5562998393940"  # WhatsApp da sua esposa para envio do relatório
+NUMERO_INSTANCIA = os.getenv("NUMERO_INSTANCIA")
+NUMERO_ESPOSA = "+5562998393940"
 
 ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-text"
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-respostas_automaticas = []
-log_diario = []
-
-# === Blocos de respostas ===
+# Carrega os blocos de resposta
 try:
-    with open("blocos_respostas.json", "r", encoding="utf-8") as file:
-        respostas_automaticas = json.load(file)
+    with open("blocos_respostas.json", "r", encoding="utf-8") as f:
+        blocos_resposta = json.load(f)
 except Exception as e:
-    print("❌ Erro ao carregar blocos_respostas.json:", str(e))
+    print("Erro ao carregar blocos_respostas.json:", e)
+    blocos_resposta = []
 
-# === Verifica assunto ===
-def detectar_assunto(msg):
-    termos = ["contrato", "holding", "divórcio", "herança", "inventário",
-              "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"]
-    msg = msg.lower()
-    return "profissional" if any(t in msg for t in termos) else "particular"
+def detectar_assunto(mensagem):
+    palavras_chave = [
+        "contrato", "holding", "divórcio", "herança", "inventário",
+        "processo", "consulta", "renegociação", "empresa", "advogado", "atendimento"
+    ]
+    mensagem = mensagem.lower()
+    return "profissional" if any(p in mensagem for p in palavras_chave) else "particular"
 
-# === Verifica resposta direta via bloco ===
-def responder_com_bloco(msg):
-    for bloco in respostas_automaticas:
+def responder_com_bloco(mensagem):
+    for bloco in blocos_resposta:
         for termo in bloco.get("keywords", []):
-            if termo in msg.lower():
+            if termo.lower() in mensagem.lower():
                 return bloco["response"]
     return None
 
-# === Formata o pronome de tratamento ===
-def tratar_contato(nome, telefone):
-    nome_lower = nome.lower() if nome else ""
-    if any(t in nome_lower for t in ["dr ", "doutor", "advogado"]):
-        return f"Dr. {nome}"
-    elif any(t in nome_lower for t in ["dra", "doutora", "advogada"]):
-        return f"Dra. {nome}"
-    elif nome:
-        return f"Sr(a). {nome}"
-    else:
-        return "Olá, tudo bem?"
-
-# === GPT humanizado ===
-def gerar_resposta_gpt(mensagem, nome, telefone):
+def gerar_resposta_gpt(mensagem):
     try:
-        saudacao = tratar_contato(nome, telefone)
         prompt = f"""
-Mensagem do cliente ({saudacao}):
+Você é o Dr. Dayan, advogado responsável pelo escritório Teixeira.Brito Advogados.
+
+Mensagem recebida:
 "{mensagem}"
 
-Responda de forma objetiva, empática e sem juridiquês. Se não entender, peça mais informações.
-Convide para agendar uma ligação com o Dr. Dayan, caso necessário.
+Responda de forma clara, com linguagem simples e humanizada. Se não entender a solicitação, peça esclarecimentos e ofereça opção de agendamento para atendimento direto.
 """
-        response = client.chat.completions.create(
+        resposta = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "Você é um assistente jurídico humanizado e profissional, representando o escritório Teixeira.Brito."},
+                {"role": "system", "content": "Você é um advogado experiente e humanizado."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=350,
+            max_tokens=400,
             temperature=0.4
         )
-        return response.choices[0].message.content.strip()
+        return resposta.choices[0].message.content.strip()
     except Exception as e:
-        print("❌ Erro GPT:", str(e))
+        print("Erro GPT:", str(e))
         return None
 
-# === Envio pela Z-API ===
-def enviar_zapi(phone, message):
-    payload = {"phone": phone, "message": message}
+def enviar_zapi(numero, mensagem):
+    payload = {"phone": numero, "message": mensagem}
     headers = {
         "Content-Type": "application/json",
         "Client-Token": ZAPI_TOKEN
     }
     try:
         r = requests.post(ZAPI_URL, json=payload, headers=headers)
-        print(f"✅ Enviado para {phone} | Status: {r.status_code} | Resposta: {r.text}")
+        print(f"✅ Enviado para {numero} | Resposta: {r.text}")
     except Exception as e:
-        print("❌ Erro Z-API:", str(e))
-
-# === Gerar relatório diário em PDF ===
-def gerar_relatorio_pdf():
-    if not log_diario:
-        return None
-
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, "Relatório Diário de Atendimentos", ln=True, align="C")
-    pdf.ln(10)
-
-    for i, log in enumerate(log_diario, start=1):
-        pdf.multi_cell(0, 10, f"{i}. Nome: {log['nome']}\nTelefone: {log['telefone']}\nMensagem: {log['mensagem']}\n", border=0)
-        pdf.ln(2)
-
-    nome_arquivo = f"relatorio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    caminho = f"/tmp/{nome_arquivo}"
-    pdf.output(caminho)
-    return caminho
+        print("Erro ao enviar pela Z-API:", str(e))
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "online", "message": "Webhook jurídico ativo"}), 200
+    return jsonify({"status": "ok", "mensagem": "Webhook em execução."})
 
 @app.route("/webhook", methods=["POST"])
-def responder():
-    try:
-        data = request.json or {}
-        print("📩 JSON recebido:", data)
+def webhook():
+    data = request.json or {}
+    mensagem = (
+        data.get("message", "") or
+        data.get("text", {}).get("message", "") or
+        data.get("text", {}).get("body", "") or
+        data.get("image", {}).get("caption", "") or
+        data.get("document", {}).get("caption", "")
+    ).strip()
 
-        mensagem = data.get("message", "").strip() \
-            or data.get("text", {}).get("message", "") \
-            or data.get("text", {}).get("body", "") \
-            or data.get("image", {}).get("caption", "") \
-            or data.get("document", {}).get("caption", "") \
-            or ""
-
-        if not mensagem:
-            return jsonify({"response": None})
-
-        is_group = data.get("isGroup", False)
-        telefone = data.get("participantPhone") if is_group else data.get("senderPhone") or data.get("phone", "")
-        nome = data.get("senderName", "Contato")
-        numero_mencionado = NUMERO_INSTANCIA in mensagem
-
-        if is_group and not numero_mencionado:
-            print("👥 Ignorado: grupo sem menção direta ao número.")
-            return jsonify({"response": None})
-
-        if telefone == NUMERO_INSTANCIA:
-            return jsonify({"response": None})
-
-        tipo = detectar_assunto(mensagem)
-
-        if tipo == "profissional":
-            resposta = responder_com_bloco(mensagem) or gerar_resposta_gpt(mensagem, nome, telefone)
-            if resposta:
-                enviar_zapi(telefone, resposta)
-                log_diario.append({
-                    "telefone": telefone,
-                    "nome": nome,
-                    "mensagem": mensagem,
-                    "resposta": resposta
-                })
-                return jsonify({"response": resposta})
-
+    if not mensagem:
         return jsonify({"response": None})
 
-    except Exception as e:
-        print("❌ Erro geral:", str(e))
-        return jsonify({"error": "Erro interno"}), 500
+    telefone = data.get("senderPhone") or data.get("phone", "")
+    nome = data.get("senderName", "")
 
-@app.route("/enviar-relatorio", methods=["GET"])
-def enviar_relatorio():
-    try:
-        caminho = gerar_relatorio_pdf()
-        if not caminho:
-            return jsonify({"status": "vazio", "mensagem": "Nenhuma interação registrada hoje."})
+    if telefone == NUMERO_INSTANCIA:
+        return jsonify({"response": None})
 
-        with open(caminho, "rb") as f:
-            base64_pdf = f.read().encode("base64")
+    tipo = detectar_assunto(mensagem)
+    if tipo == "profissional":
+        resposta = responder_com_bloco(mensagem) or gerar_resposta_gpt(mensagem)
+        if resposta:
+            enviar_zapi(telefone, resposta)
+            # Resposta extra para sua esposa se for ela
+            if telefone.endswith("98393940"):
+                enviar_zapi(NUMERO_ESPOSA, "Oi, amor! Já vi sua mensagem e vou te responder pessoalmente em breve ❤️")
+            return jsonify({"response": resposta})
 
-        payload = {
-            "phone": NUMERO_RELATORIO,
-            "fileName": "relatorio_diario.pdf",
-            "base64": base64_pdf,
-            "caption": "📄 Relatório diário de atendimentos jurídicos."
-        }
-
-        headers = {
-            "Content-Type": "application/json",
-            "Client-Token": ZAPI_TOKEN
-        }
-
-        r = requests.post(f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/send-file-base64", json=payload, headers=headers)
-        print("📤 Relatório enviado", r.status_code, r.text)
-        return jsonify({"status": "ok", "envio": True})
-
-    except Exception as e:
-        print("❌ Erro ao enviar relatório:", str(e))
-        return jsonify({"error": "Falha ao enviar relatório"}), 500
+    return jsonify({"response": None})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
