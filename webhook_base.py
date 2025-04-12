@@ -28,8 +28,10 @@ def horario_comercial():
     hora = agora().hour
     return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
 
+import emoji
+
 def remover_emojis(texto):
-    return re.sub(r'[^\x00-\x7F]+', '', texto)
+    return emoji.replace_emoji(texto, replace='')
 
 def limpar_texto(texto):
     texto = remover_emojis(texto)
