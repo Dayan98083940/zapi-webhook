@@ -1,0 +1,37 @@
+[
+  {
+    "name": "agendamento",
+    "keywords": [
+      "agendar",
+      "marcar horário",
+      "consulta",
+      "vocês atendem",
+      "atendimento",
+      "quero falar com advogado"
+    ],
+    "response": "Olá! Claro que podemos te atender. Você prefere atendimento presencial ou online? Você também pode agendar diretamente pelo link: https://calendly.com/dayan-advgoias"
+  },
+  {
+    "name": "duvida_juridica_simples",
+    "keywords": [
+      "contrato",
+      "holding",
+      "divórcio",
+      "herança",
+      "como fazer",
+      "é possível",
+      "posso",
+      "quero saber sobre"
+    ],
+    "response": "Entendi sua dúvida. Posso te orientar com base na legislação, sim. Se quiser, posso te enviar um material explicativo ou, se preferir, podemos agendar um atendimento."
+  },
+  {
+    "name": "andamento_processo",
+    "keywords": [
+      "meu processo",
+      "saiu algo",
+      "novidade",
+      "acompanhamento",
+      "tem algo novo"
+    ],
+    "response": "Vamos verificar com nossa equipe jurídica e te daremos um retorno completo. Você prefere que ent
