@@ -36,7 +36,10 @@ def enviar_para_whatsapp(numero, mensagem):
             "Content-Type": "application/json"
         }
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
-        payload = {"phone": numero, "message": mensagem}
+        payload = {k: v for k, v in {
+    "phone": numero,
+    "message": mensagem
+}.items() if v is not None}
         response = requests.post(url, json=payload, headers=headers)
         print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
     except Exception as e:
