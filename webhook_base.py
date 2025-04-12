@@ -1,37 +1,32 @@
 from flask import Flask, request, jsonify
 import os
 import json
-import openai
-import traceback
 import requests
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
 # === VARIÁVEIS DE AMBIENTE ===
-openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or os.getenv("TOKEN_DA_INSTANCIA")
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
-
-# === VERIFICAÇÕES INICIAIS ===
-if not openai.api_key:
-    print("⚠️ OPENAI_API_KEY não definida.")
-if not EXPECTED_CLIENT_TOKEN:
-    print("⚠️ CLIENT_TOKEN não definido.")
-if not ZAPI_INSTANCE_ID or not ZAPI_TOKEN:
-    print("⚠️ ZAPI_INSTANCE_ID ou ZAPI_TOKEN não definidos.")
 
 # === CONFIGURAÇÕES ===
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
 DIAS_UTEIS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
-
 CONTATO_DIRETO = "+55 62 99808-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
-ARQUIVO_CONTROLE = "controle_interacoes.json"
 
 # === FUNÇÕES DE APOIO ===
+def agora():
+    return datetime.now()
+
+def horario_comercial():
+    dia = agora().strftime("%A").lower()
+    hora = agora().hour
+    return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
+
 def enviar_para_whatsapp(numero, mensagem):
     if not numero:
         print("⚠️ Número vazio. Mensagem não enviada.")
@@ -45,150 +40,62 @@ def enviar_para_whatsapp(numero, mensagem):
     except Exception as e:
         print(f"❌ Erro ao enviar mensagem: {e}")
 
-def carregar_controle():
-    try:
-        with open(ARQUIVO_CONTROLE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def salvar_controle(dados):
-    with open(ARQUIVO_CONTROLE, "w", encoding="utf-8") as f:
-        json.dump(dados, f, ensure_ascii=False, indent=2)
-
-controle = carregar_controle()
-
-def agora():
-    return datetime.now()
-
-def hoje():
-    return agora().strftime("%Y-%m-%d")
-
-def horario_comercial():
-    dia = agora().strftime("%A").lower()
-    hora = agora().hour
-    return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
-
-def marcar_resposta(contato):
-    if contato not in controle:
-        controle[contato] = {}
-    controle[contato]["ultima_resposta"] = hoje()
-    salvar_controle(controle)
-
-def registrar_interacao_manual(contato):
-    if contato not in controle:
-        controle[contato] = {}
-    controle[contato]["interacao_manual"] = agora().isoformat()
-    salvar_controle(controle)
-
-def pausado_por_interacao(contato):
-    interacao = controle.get(contato, {}).get("interacao_manual")
-    if not interacao:
-        return False
-    ultima = datetime.fromisoformat(interacao)
-    return agora() - ultima < timedelta(minutes=30)
-
-def foi_mencionado(mensagem):
-    texto = mensagem.lower()
-    return any(trigger in texto for trigger in ["@dayan", "dr. dayan", "doutor dayan", "doutora dayan"])
-
-def gerar_resposta(mensagem, nome, fora_horario=False):
-    if fora_horario:
-        return f"""Olá, {nome}. Agradeço pelo contato.
-
-No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).
-Você pode agendar um horário para amanhã no link abaixo, ou me enviar uma mensagem caso seja urgente:
-
-📅 {LINK_CALENDLY}
-📞 {CONTATO_DIRETO}
-"""
-    prompt = (
-        f"Você é um assistente jurídico representando o advogado Dr. Dayan.\n"
-        f"Seu papel é iniciar o atendimento de forma humanizada, acolhedora e respeitosa.\n"
-        f"Nunca forneça pareceres jurídicos, mas ofereça o primeiro acolhimento e, quando necessário, redirecione para o agendamento com o Dr. Dayan ou para contato direto.\n\n"
-        f"Mensagem recebida:\n\"{mensagem}\"\n\nRemetente: {nome}"
+def formatar_resposta(texto_base, assunto="geral"):
+    assinatura = (
+        "\n\nSe precisar de mais informações, você pode agendar um horário comigo ou me ligar:"
+        "\n📅 https://calendly.com/dayan-advgoias"
+        "\n📞 (62) 99808-3940"
     )
-    try:
-        resposta = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=400
-        )
-        return resposta.choices[0].message.content.strip()
-    except Exception as e:
-        traceback.print_exc()
-        print(f"❌ Erro ao gerar resposta com GPT: {e}")
-        return "Desculpe, houve um erro ao processar sua solicitação."
+    if "processo" in assunto:
+        complemento = "\n\nVocê pode me informar o número do atendimento ou processo? Se preferir, podemos agendar uma conversa presencial ou virtual para tratar com mais detalhes."
+    else:
+        complemento = "\n\nPosso te ajudar em algo mais?"
+    return texto_base + assinatura + complemento
 
 # === ROTA PRINCIPAL ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    r"""
-    Requisição esperada para /webhook:
-
-    Headers:
-      Client-Token: seu-token-aqui
-      Content-Type: application/json
-
-    Body:
-    {
-      "sender": "556299999999",
-      "senderName": "João",
-      "message": "Quero fazer um contrato",
-      "groupName": null
-    }
-    """
     token = request.headers.get("Client-Token")
-    if not token:
-        return jsonify({"error": "Cabeçalho 'Client-Token' ausente."}), 403
-    if token != EXPECTED_CLIENT_TOKEN:
-        return jsonify({"error": "Token inválido."}), 403
+    if not token or token != EXPECTED_CLIENT_TOKEN:
+        return jsonify({"error": "Token inválido ou ausente."}), 403
 
     data = request.json or {}
+    mensagem = data.get("message", "").lower()
+    nome = data.get("senderName", "")
+    grupo = data.get("groupName", "")
+    numero = data.get("sender") or data.get("chatId", "").split("@")[0]
+
     print("🧩 DADOS RECEBIDOS:")
     print(json.dumps(data, indent=2, ensure_ascii=False))
 
-    nome = data.get("senderName", "")
-    grupo = data.get("groupName", "")
-    mensagem = data.get("message", "")
-    contato = grupo or nome
-    is_grupo = bool(grupo)
-    numero = data.get("sender") or data.get("chatId", "").split("@")[0]
-    print(f"📞 Número extraído: {numero}")
-
-    if is_grupo and not foi_mencionado(mensagem):
-        print("🔕 Ignorado: grupo sem menção direta.")
-        return jsonify({"response": None})
-
-    if pausado_por_interacao(contato):
-        print("⏸️ IA pausada por interação manual.")
-        return jsonify({"response": None})
-
-    if "contrato" in mensagem.lower():
-        resposta = "Certo, qual contrato? Fale mais sobre o negócio jurídico que deseja formalizar para que possamos entender melhor sua necessidade."
+    if "inventário" in mensagem:
+        resposta = formatar_resposta("Você deseja abrir um inventário judicial ou extrajudicial? Posso te orientar sobre os documentos e os passos necessários.", "inventário")
+    elif "processo" in mensagem:
+        resposta = formatar_resposta("Sobre processos judiciais, posso ajudar com a análise ou acompanhamento do seu caso.", "processo")
+    elif "contrato" in mensagem:
+        resposta = formatar_resposta("Certo, qual contrato? Fale mais sobre o negócio jurídico que deseja formalizar para que possamos entender melhor sua necessidade.", "contrato")
     elif not horario_comercial():
-        resposta = gerar_resposta(mensagem, nome, fora_horario=True)
+        resposta = formatar_resposta("Olá, agradeço pelo contato. No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).", "fora_horario")
     else:
-        resposta = gerar_resposta(mensagem, nome)
+        resposta = formatar_resposta("Recebido. Me conte mais detalhes para que eu possa te ajudar melhor.")
 
-    marcar_resposta(contato)
     enviar_para_whatsapp(numero, resposta)
+
+    # === LOG DE ACOMPANHAMENTO NO RENDER ===
+    print("📞 Telefone:", numero)
+    print("📨 Mensagem recebida:", mensagem)
+    print("✅ Resposta enviada:", resposta)
+
     return jsonify({"response": resposta})
 
 # === ROTA DE STATUS ===
 @app.route("/", methods=["GET"])
 def status():
-    return jsonify({
-        "status": "online",
-        "message": "Servidor do Webhook Dr. Dayan ativo ✅"
-    })
+    return jsonify({"status": "online"})
 
 @app.errorhandler(404)
-def rota_nao_encontrada(e):
-    return jsonify({
-        "error": "Rota não encontrada. Use /webhook para POSTs válidos."
-    }), 404
+def not_found(e):
+    return jsonify({"error": "Rota não encontrada"}), 404
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
