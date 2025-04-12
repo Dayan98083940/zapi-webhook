@@ -7,3 +7,4 @@ Body:
   "notifySentByMe": true
 }
 POST /webhook 200
+pip install emoji
