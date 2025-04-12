@@ -6,16 +6,15 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# === VARIÁVEIS DE AMBIENTE ===
+# === CONFIGURAÇÕES ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or os.getenv("TOKEN_DA_INSTANCIA")
 
 if not openai.api_key:
-    print("⚠️ AVISO: OPENAI_API_KEY não definida.")
+    print("⚠️ OPENAI_API_KEY não definida.")
 if not EXPECTED_CLIENT_TOKEN:
-    print("⚠️ AVISO: CLIENT_TOKEN não definida.")
+    print("⚠️ CLIENT_TOKEN não definido.")
 
-# === CONFIGURAÇÕES ===
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
 DIAS_UTEIS = ["segunda", "terça", "quarta", "quinta", "sexta"]
@@ -49,20 +48,17 @@ def horario_comercial():
     hora = agora().hour
     return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
 
-def foi_atendido_hoje(contato):
-    return controle.get(contato, {}).get("ultima_resposta") == hoje()
-
 def marcar_resposta(contato):
     if contato not in controle:
         controle[contato] = {}
     controle[contato]["ultima_resposta"] = hoje()
-    salvar_controle(contato)
+    salvar_controle(controle)
 
 def registrar_interacao_manual(contato):
     if contato not in controle:
         controle[contato] = {}
     controle[contato]["interacao_manual"] = agora().isoformat()
-    salvar_controle(contato)
+    salvar_controle(controle)
 
 def pausado_por_interacao(contato):
     interacao = controle.get(contato, {}).get("interacao_manual")
@@ -71,30 +67,28 @@ def pausado_por_interacao(contato):
     ultima = datetime.fromisoformat(interacao)
     return agora() - ultima < timedelta(minutes=30)
 
-def deve_responder(contato):
-    if pausado_por_interacao(contato):
-        return False
-    if foi_atendido_hoje(contato):
-        return not horario_comercial()
-    return True
-
 def foi_mencionado(mensagem):
     texto = mensagem.lower()
     return any(trigger in texto for trigger in ["@dayan", "dr. dayan", "doutor dayan", "doutora dayan"])
 
-# === GPT-4 com log de erro detalhado ===
-def analisar_com_gpt(mensagem, nome):
+# === GERA RESPOSTA HUMANIZADA COM GPT ===
+def gerar_resposta(mensagem, nome, fora_horario=False):
+    if fora_horario:
+        return (
+            f"Olá, {nome}. Agradeço pelo contato.\n\n"
+            f"No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).\n"
+            f"Você pode agendar um horário para amanhã no link abaixo, ou me enviar uma mensagem caso seja urgente:\n"
+            f"📅 {LINK_CALENDLY}\n📞 {CONTATO_DIRETO}"
+        )
+
     prompt = f"""
-Você é um assistente jurídico representando o Dr. Dayan.
+Você é um assistente jurídico representando o advogado Dr. Dayan.
 
-Funções:
-1. Identifique se a mensagem é pessoal, profissional ou urgente.
-2. Se for pessoal ou irrelevante, responda com: IGNORAR.
-3. Se for urgente fora do horário, oriente contato direto via: {CONTATO_DIRETO}.
-4. Se for profissional fora do horário, ofereça agendamento via: {LINK_CALENDLY}.
-5. Se for profissional no horário, responda com empatia e linguagem formal.
+Seu papel é iniciar o atendimento de forma humanizada, acolhedora e respeitosa.
 
-Mensagem:
+Nunca forneça pareceres jurídicos, mas ofereça o primeiro acolhimento e, quando necessário, redirecione para o agendamento com o Dr. Dayan ou para contato direto.
+
+Mensagem recebida:
 "{mensagem}"
 
 Remetente: {nome}
@@ -108,15 +102,13 @@ Remetente: {nome}
         )
         return resposta.choices[0].message.content.strip()
     except Exception as e:
-        print("❌ Erro ao consultar o GPT:")
-        print(e)  # <- Isso aparecerá nos logs da Render
+        print(f"❌ Erro ao gerar resposta com GPT: {e}")
         return "Desculpe, houve um erro ao processar sua solicitação."
 
 # === ROTA PRINCIPAL ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Client-Token")
-
     if not token:
         return jsonify({"error": "Cabeçalho 'Client-Token' ausente."}), 403
     if token != EXPECTED_CLIENT_TOKEN:
@@ -129,18 +121,24 @@ def webhook():
     contato = grupo or nome
     is_grupo = bool(grupo)
 
+    print(f"📩 Mensagem recebida de: {nome} | Grupo: {grupo or 'Privado'}")
+    print(f"📨 Conteúdo: {mensagem}")
+
     if is_grupo and not foi_mencionado(mensagem):
+        print("🔕 Ignorado: mensagem em grupo sem menção.")
         return jsonify({"response": None})
 
-    if not deve_responder(contato):
+    if pausado_por_interacao(contato):
+        print("⏸️ IA pausada por interação manual.")
         return jsonify({"response": None})
 
-    resposta = analisar_com_gpt(mensagem, nome)
-
-    if resposta.strip().upper() == "IGNORAR":
-        return jsonify({"response": None})
+    if not horario_comercial():
+        resposta = gerar_resposta(mensagem, nome, fora_horario=True)
+    else:
+        resposta = gerar_resposta(mensagem, nome)
 
     marcar_resposta(contato)
+    print(f"✅ Resposta enviada: {resposta[:100]}...")
     return jsonify({"response": resposta})
 
 # === ROTA DE STATUS ===
@@ -151,17 +149,7 @@ def status():
         "message": "Servidor do Webhook Dr. Dayan ativo ✅"
     })
 
-# === ROTA PARA REGISTRO MANUAL ===
-@app.route("/registrar-manual", methods=["POST"])
-def registrar_manual():
-    data = request.json
-    contato = data.get("contato")
-    if not contato:
-        return jsonify({"error": "Contato é obrigatório"}), 400
-    registrar_interacao_manual(contato)
-    return jsonify({"status": "Registrado com sucesso."})
-
-# === TRATAMENTO DE ERRO 404 ===
+# === ERRO 404 ===
 @app.errorhandler(404)
 def rota_nao_encontrada(e):
     return jsonify({
