@@ -1,5 +1,6 @@
-flask
-requests
-openai
-python-dotenv
+flask==3.1.0
+openai==1.73.0
+requests==2.32.3
+python-dotenv==1.1.0
 fpdf==1.7.2
+gunicorn==21.2.0
