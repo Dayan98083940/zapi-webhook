@@ -8,13 +8,12 @@ app = Flask(__name__)
 
 # ========== CONFIGURAÇÕES ==========
 openai.api_key = os.getenv("OPENAI_API_KEY")
-EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
+EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or os.getenv("TOKEN_DA_INSTANCIA")
 
-# Mensagens de aviso no console (sem travar o deploy)
 if not openai.api_key:
-    print("⚠️ AVISO: OPENAI_API_KEY não definida. Verifique o painel da Render.")
+    print("⚠️ AVISO: OPENAI_API_KEY não definida. Verifique a Render.")
 if not EXPECTED_CLIENT_TOKEN:
-    print("⚠️ AVISO: CLIENT_TOKEN não definido. Verifique o painel da Render.")
+    print("⚠️ AVISO: CLIENT_TOKEN (ou TOKEN_DA_INSTANCIA) não definido.")
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
@@ -91,9 +90,9 @@ Você é um assistente jurídico representando o Dr. Dayan.
 Funções:
 1. Identifique se a mensagem é pessoal, profissional ou urgente.
 2. Se for pessoal ou irrelevante, responda com: IGNORAR.
-3. Se for urgente fora do horário, oriente contato imediato via: {CONTATO_DIRETO}.
+3. Se for urgente fora do horário, oriente contato direto via: {CONTATO_DIRETO}.
 4. Se for profissional fora do horário, ofereça agendamento via: {LINK_CALENDLY}.
-5. Se for profissional e no horário, responda com linguagem empática, clara e formal.
+5. Se for profissional no horário, responda com empatia e linguagem formal.
 
 Mensagem:
 "{mensagem}"
@@ -112,7 +111,7 @@ Remetente: {nome}
         print(f"❌ Erro ao consultar o GPT: {e}")
         return "Desculpe, houve um erro ao processar sua solicitação."
 
-# ========== ROTA PRINCIPAL ==========
+# ========== WEBHOOK ==========
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Client-Token")
@@ -143,7 +142,7 @@ def webhook():
     marcar_resposta(contato)
     return jsonify({"response": resposta})
 
-# ========== ROTA DE CONTROLE MANUAL ==========
+# ========== REGISTRO MANUAL ==========
 @app.route("/registrar-manual", methods=["POST"])
 def registrar_manual():
     data = request.json
