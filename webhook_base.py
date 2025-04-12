@@ -56,13 +56,13 @@ def marcar_resposta(contato):
     if contato not in controle:
         controle[contato] = {}
     controle[contato]["ultima_resposta"] = hoje()
-    salvar_controle(controle)
+    salvar_controle(contato)
 
 def registrar_interacao_manual(contato):
     if contato not in controle:
         controle[contato] = {}
     controle[contato]["interacao_manual"] = agora().isoformat()
-    salvar_controle(controle)
+    salvar_controle(contato)
 
 def pausado_por_interacao(contato):
     interacao = controle.get(contato, {}).get("interacao_manual")
@@ -82,7 +82,7 @@ def foi_mencionado(mensagem):
     texto = mensagem.lower()
     return any(trigger in texto for trigger in ["@dayan", "dr. dayan", "doutor dayan", "doutora dayan"])
 
-# === GPT-4 ===
+# === GPT-4 com log de erro detalhado ===
 def analisar_com_gpt(mensagem, nome):
     prompt = f"""
 Você é um assistente jurídico representando o Dr. Dayan.
@@ -108,7 +108,8 @@ Remetente: {nome}
         )
         return resposta.choices[0].message.content.strip()
     except Exception as e:
-        print(f"❌ Erro ao consultar o GPT: {e}")
+        print("❌ Erro ao consultar o GPT:")
+        print(e)  # <- Isso aparecerá nos logs da Render
         return "Desculpe, houve um erro ao processar sua solicitação."
 
 # === ROTA PRINCIPAL ===
@@ -150,7 +151,7 @@ def status():
         "message": "Servidor do Webhook Dr. Dayan ativo ✅"
     })
 
-# === ROTA PARA REGISTRAR INTERAÇÃO MANUAL ===
+# === ROTA PARA REGISTRO MANUAL ===
 @app.route("/registrar-manual", methods=["POST"])
 def registrar_manual():
     data = request.json
@@ -160,7 +161,7 @@ def registrar_manual():
     registrar_interacao_manual(contato)
     return jsonify({"status": "Registrado com sucesso."})
 
-# === TRATAMENTO DE 404 ===
+# === TRATAMENTO DE ERRO 404 ===
 @app.errorhandler(404)
 def rota_nao_encontrada(e):
     return jsonify({
