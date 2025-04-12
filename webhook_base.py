@@ -37,9 +37,9 @@ def enviar_para_whatsapp(numero, mensagem):
         }
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
         payload = {k: v for k, v in {
-    "phone": numero,
-    "message": mensagem
-}.items() if v is not None}
+            "phone": numero,
+            "message": mensagem
+        }.items() if v is not None}
         response = requests.post(url, json=payload, headers=headers)
         print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
     except Exception as e:
@@ -60,7 +60,7 @@ def formatar_resposta(texto_base, assunto="geral"):
 # === ROTA PRINCIPAL ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # Aceita token via header OU querystring (usado pela Z-API)
+    # Aceita token via header OU via querystring
     token = request.headers.get("Client-Token") or request.args.get("token")
     if not token or token != EXPECTED_CLIENT_TOKEN:
         return jsonify({"error": "Token inválido ou ausente."}), 403
