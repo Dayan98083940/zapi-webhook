@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import json
 import requests
+import re
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
@@ -27,56 +28,57 @@ def horario_comercial():
     hora = agora().hour
     return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
 
-import re
-
 def remover_emojis(texto):
-    # Remove qualquer emoji ou caractere não ASCII
     return re.sub(r'[^\x00-\x7F]+', '', texto)
+
+def limpar_texto(texto):
+    texto = remover_emojis(texto)
+    texto = re.sub(r'\s+', ' ', texto)
+    return texto.strip()
 
 def enviar_para_whatsapp(numero, mensagem):
     if not numero:
-        print("⚠️ Número vazio. Mensagem não enviada.")
+        print("Aviso: número de telefone vazio. Nenhuma mensagem foi enviada.")
         return
     try:
         headers = {
             "Content-Type": "application/json"
         }
 
-        texto_limpo = remover_emojis(mensagem.replace("\n", " ").strip())
+        texto_limpo = limpar_texto(str(mensagem))
 
         payload = {
             "phone": numero.strip(),
             "message": texto_limpo
         }
 
-        # Remover campos nulos ou vazios
         payload = {k: v for k, v in payload.items() if v}
 
-        print("📦 Payload a ser enviado para Z-API:")
+        print("Payload enviado para Z-API:")
         print(json.dumps(payload, indent=2, ensure_ascii=False))
 
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
         response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
+        print(f"Mensagem enviada para {numero}: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"❌ Erro ao enviar mensagem: {e}")
+        print(f"Erro ao enviar mensagem: {e}")
 
 def formatar_resposta(texto_base, assunto="geral"):
     assinatura = (
-        "\n\nSe precisar de mais informações, você pode agendar um horário comigo ou me ligar:"
-        "\n📅 https://calendly.com/dayan-advgoias"
-        "\n📞 (62) 99808-3940"
+        "\n\nCaso precise de mais informações, agende um horário comigo ou entre em contato:"
+        "\nAgendamento: https://calendly.com/dayan-advgoias"
+        f"\nTelefone: {CONTATO_DIRETO}"
     )
     if "processo" in assunto:
-        complemento = "\n\nVocê pode me informar o número do atendimento ou processo? Se preferir, podemos agendar uma conversa presencial ou virtual para tratar com mais detalhes."
+        complemento = "\n\nSe possível, informe o número do atendimento ou processo. Podemos também agendar uma reunião presencial ou virtual para tratar os detalhes."
     else:
-        complemento = "\n\nPosso te ajudar em algo mais?"
+        complemento = "\n\nPosso te auxiliar em mais alguma demanda?"
+
     return texto_base + assinatura + complemento
 
 # === ROTA PRINCIPAL ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # Aceita token via header OU via querystring
     token = request.headers.get("Client-Token") or request.args.get("token")
     if not token or token != EXPECTED_CLIENT_TOKEN:
         return jsonify({"error": "Token inválido ou ausente."}), 403
@@ -87,26 +89,25 @@ def webhook():
     grupo = data.get("groupName", "")
     numero = data.get("sender") or data.get("chatId", "").split("@")[0]
 
-    print("🧩 DADOS RECEBIDOS:")
+    print("Dados recebidos:")
     print(json.dumps(data, indent=2, ensure_ascii=False))
 
     if "inventário" in mensagem:
-        resposta = formatar_resposta("Você deseja abrir um inventário judicial ou extrajudicial? Posso te orientar sobre os documentos e os passos necessários.", "inventário")
+        resposta = formatar_resposta("Você deseja abrir um inventário judicial ou extrajudicial? Posso orientá-lo quanto aos documentos necessários e ao procedimento.", "inventário")
     elif "processo" in mensagem:
-        resposta = formatar_resposta("Sobre processos judiciais, posso ajudar com a análise ou acompanhamento do seu caso.", "processo")
+        resposta = formatar_resposta("Em relação ao processo, posso ajudar com análise, acompanhamento ou defesa, conforme o caso.", "processo")
     elif "contrato" in mensagem:
-        resposta = formatar_resposta("Certo, qual contrato? Fale mais sobre o negócio jurídico que deseja formalizar para que possamos entender melhor sua necessidade.", "contrato")
+        resposta = formatar_resposta("Certo. Qual é o tipo de contrato que você precisa elaborar ou revisar?", "contrato")
     elif not horario_comercial():
-        resposta = formatar_resposta("Olá, agradeço pelo contato. No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).", "fora_horario")
+        resposta = formatar_resposta("Olá. No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).", "fora_horario")
     else:
-        resposta = formatar_resposta("Recebido. Me conte mais detalhes para que eu possa te ajudar melhor.")
+        resposta = formatar_resposta("Recebido. Por gentileza, forneça mais detalhes para que eu possa atendê-lo da melhor forma.")
 
     enviar_para_whatsapp(numero, resposta)
 
-    # === LOG PARA MONITORAMENTO NO RENDER ===
-    print("📞 Telefone:", numero)
-    print("📨 Mensagem recebida:", mensagem)
-    print("✅ Resposta enviada:", resposta)
+    print("Telefone:", numero)
+    print("Mensagem recebida:", mensagem)
+    print("Resposta enviada:", resposta)
 
     return jsonify({"response": resposta})
 
