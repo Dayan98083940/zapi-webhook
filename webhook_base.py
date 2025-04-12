@@ -119,6 +119,21 @@ def gerar_resposta(mensagem, nome, fora_horario=False):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    r"""
+    Requisição esperada para /webhook:
+
+    Headers:
+      Client-Token: seu-token-aqui
+      Content-Type: application/json
+
+    Body (JSON):
+    {
+      "sender": "556299999999",
+      "senderName": "João",
+      "message": "Quero fazer um contrato",
+      "groupName": null
+    }
+    """
     token = request.headers.get("Client-Token")
     if not token:
         return jsonify({"error": "Cabeçalho 'Client-Token' ausente."}), 403
