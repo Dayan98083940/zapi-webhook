@@ -10,6 +10,7 @@ app = Flask(__name__)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 
+# Mensagens de aviso no console (sem travar o deploy)
 if not openai.api_key:
     print("⚠️ AVISO: OPENAI_API_KEY não definida. Verifique o painel da Render.")
 if not EXPECTED_CLIENT_TOKEN:
@@ -21,7 +22,6 @@ DIAS_UTEIS = ["segunda", "terça", "quarta", "quinta", "sexta"]
 
 CONTATO_DIRETO = "+55 62 99808-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
-
 ARQUIVO_CONTROLE = "controle_interacoes.json"
 
 # ========== HISTÓRICO ==========
@@ -91,14 +91,14 @@ Você é um assistente jurídico representando o Dr. Dayan.
 Funções:
 1. Identifique se a mensagem é pessoal, profissional ou urgente.
 2. Se for pessoal ou irrelevante, responda com: IGNORAR.
-3. Se for urgente e fora do horário, oriente contato imediato via: {CONTATO_DIRETO}.
+3. Se for urgente fora do horário, oriente contato imediato via: {CONTATO_DIRETO}.
 4. Se for profissional fora do horário, ofereça agendamento via: {LINK_CALENDLY}.
-5. Se for profissional e no horário, responda com linguagem empática e formal.
+5. Se for profissional e no horário, responda com linguagem empática, clara e formal.
 
 Mensagem:
 "{mensagem}"
 
-Nome do remetente: {nome}
+Remetente: {nome}
 """
     try:
         resposta = openai.ChatCompletion.create(
@@ -109,8 +109,8 @@ Nome do remetente: {nome}
         )
         return resposta.choices[0].message.content.strip()
     except Exception as e:
-        print(f"Erro ao consultar GPT: {e}")
-        return "Desculpe, ocorreu um erro ao processar sua solicitação."
+        print(f"❌ Erro ao consultar o GPT: {e}")
+        return "Desculpe, houve um erro ao processar sua solicitação."
 
 # ========== ROTA PRINCIPAL ==========
 @app.route("/webhook", methods=["POST"])
@@ -129,7 +129,6 @@ def webhook():
     contato = grupo or nome
     is_grupo = bool(grupo)
 
-    # Restrições para grupo
     if is_grupo and not foi_mencionado(mensagem):
         return jsonify({"response": None})
 
@@ -144,7 +143,7 @@ def webhook():
     marcar_resposta(contato)
     return jsonify({"response": resposta})
 
-# ========== ROTA MANUAL ==========
+# ========== ROTA DE CONTROLE MANUAL ==========
 @app.route("/registrar-manual", methods=["POST"])
 def registrar_manual():
     data = request.json
