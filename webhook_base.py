@@ -3,6 +3,7 @@ import os
 import json
 import requests
 import re
+import emoji
 import openai
 from datetime import datetime, timedelta
 
@@ -31,12 +32,24 @@ def horario_comercial():
     return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
 
 def remover_emojis(texto):
-    return re.sub(r'[^\x00-\x7F]+', '', texto)
+    return emoji.replace_emoji(texto, replace='')
 
 def limpar_texto(texto):
     texto = remover_emojis(texto)
     texto = re.sub(r'\s+', ' ', texto)
     return texto.strip()
+
+def autenticar_requisicao(token_url):
+    token_header = request.headers.get("Client-Token")
+    content_type = request.headers.get("Content-Type")
+
+    if token_url != EXPECTED_CLIENT_TOKEN:
+        return False, "Token inválido na URL"
+    if token_header != EXPECTED_CLIENT_TOKEN:
+        return False, "Client-Token ausente ou incorreto no header"
+    if content_type != "application/json":
+        return False, "Content-Type inválido"
+    return True, ""
 
 def enviar_para_whatsapp(numero, mensagem):
     if not numero:
@@ -54,7 +67,6 @@ def enviar_para_whatsapp(numero, mensagem):
             "phone": numero.strip(),
             "message": texto_limpo
         }
-
         payload = {k: v for k, v in payload.items() if v}
 
         print("📦 Payload a ser enviado para Z-API:")
@@ -140,17 +152,12 @@ def webhook():
 
     return jsonify({"response": resposta})
 
-# === ROTAS DA Z-API COM AUTENTICAÇÃO ===
+# === ROTAS AUTENTICADAS PARA Z-API ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def webhook_receive(token):
-    client_token_header = request.headers.get("Client-Token")
-    content_type = request.headers.get("Content-Type")
-
-    if token != EXPECTED_CLIENT_TOKEN or client_token_header != EXPECTED_CLIENT_TOKEN:
-        return jsonify({"error": "Token inválido no /receive"}), 403
-
-    if content_type != "application/json":
-        return jsonify({"error": "Content-Type inválido"}), 415
+    autorizado, erro = autenticar_requisicao(token)
+    if not autorizado:
+        return jsonify({"error": erro}), 403
 
     data = request.json or {}
     print("📩 Mensagem recebida da Z-API:")
@@ -159,14 +166,9 @@ def webhook_receive(token):
 
 @app.route("/webhook/<token>/send", methods=["POST"])
 def webhook_send(token):
-    client_token_header = request.headers.get("Client-Token")
-    content_type = request.headers.get("Content-Type")
-
-    if token != EXPECTED_CLIENT_TOKEN or client_token_header != EXPECTED_CLIENT_TOKEN:
-        return jsonify({"error": "Token inválido no /send"}), 403
-
-    if content_type != "application/json":
-        return jsonify({"error": "Content-Type inválido"}), 415
+    autorizado, erro = autenticar_requisicao(token)
+    if not autorizado:
+        return jsonify({"error": erro}), 403
 
     data = request.json or {}
     print("📤 Status de envio recebido da Z-API:")
