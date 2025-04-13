@@ -1,17 +1,19 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os
 import json
 import requests
 import re
 import emoji
-from datetime import datetime, timedelta
+from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)  # Permitir testes locais com frontend se necessário
 
 # === VARIÁVEIS DE AMBIENTE ===
 EXPECTED_TOKEN = os.getenv("CLIENT_TOKEN") or "F124e80fa9ba94101a6eb723b5a20d2b3S"
-ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
-ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
+ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID") or "SUA_INSTANCE_ID_AQUI"
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN") or "SEU_ZAPI_TOKEN_AQUI"
 
 # === CONFIGURAÇÕES ===
 HORARIO_INICIO = 8
@@ -54,28 +56,24 @@ def enviar_para_whatsapp(numero, mensagem):
     try:
         headers = {
             "Content-Type": "application/json",
-            "Client-Token": "6148D6FDA5C0D66E63947D5B"  # Token correto da Z-API
+            "Client-Token": ZAPI_TOKEN  # Token vindo da variável de ambiente
         }
-
-        print(f"📡 Enviando com headers: {headers}")
 
         texto_limpo = mensagem.strip()
 
         payload = {
-            "phone": numero.strip(),  # Ex: 5562999999999
+            "phone": numero.strip(),
             "message": texto_limpo
         }
 
-        # Remover qualquer campo vazio
         payload = {k: v for k, v in payload.items() if v}
 
-        print("📦 Payload a ser enviado para Z-API:")
+        print("📦 Enviando para Z-API:")
         print(json.dumps(payload, indent=2, ensure_ascii=False))
 
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
         response = requests.post(url, json=payload, headers=headers)
 
-        # ✅ Linha corrigida:
         print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
 
     except Exception as e:
@@ -97,13 +95,23 @@ def webhook():
         return jsonify({"error": "Token de autorização inválido."}), 403
 
     data = request.json or {}
+
     mensagem = data.get("message", "").lower()
-    nome = data.get("senderName", "")
-    numero = data.get("sender") or data.get("chatId", "").split("@")[0]
+    nome = data.get("senderName", "").strip()
+    numero = data.get("sender")
+    
+    if not numero:
+        numero = data.get("chatId", "").split("@")[0]
+    else:
+        numero = numero.split("@")[0]
 
     print("🧩 DADOS RECEBIDOS:")
     print(json.dumps(data, indent=2, ensure_ascii=False))
+    print(f"📥 Mensagem: {mensagem}")
+    print(f"👤 Nome: {nome}")
+    print(f"📱 Número: {numero}")
 
+    # === Regras de Resposta ===
     if not horario_comercial():
         resposta = resposta_fora_do_expediente()
     elif "inventário" in mensagem:
@@ -117,7 +125,6 @@ def webhook():
 
     enviar_para_whatsapp(numero, resposta)
 
-    print("📞 Telefone:", numero)
     print("✅ Resposta enviada:", resposta)
 
     return jsonify({"response": resposta})
@@ -131,6 +138,6 @@ def status():
 def not_found(e):
     return jsonify({"error": "Rota não encontrada"}), 404
 
+# === INICIAR SERVIDOR ===
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 100
