@@ -1,28 +1,33 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from datetime import datetime
 import os
 import json
 import requests
 import re
 import emoji
-from datetime import datetime
+import openai
 
 app = Flask(__name__)
-CORS(app)  # Permitir testes locais com frontend se necessário
+CORS(app)
 
 # === VARIÁVEIS DE AMBIENTE ===
 EXPECTED_TOKEN = os.getenv("CLIENT_TOKEN") or "F124e80fa9ba94101a6eb723b5a20d2b3S"
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID") or "SUA_INSTANCE_ID_AQUI"
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN") or "SEU_ZAPI_TOKEN_AQUI"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI_AQUI"
 
 # === CONFIGURAÇÕES ===
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
 DIAS_UTEIS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
-CONTATO_DIRETO = "+55 62 99808-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
+# === CONFIGURAÇÃO OPENAI ===
+openai.api_key = OPENAI_API_KEY
+
 # === FUNÇÕES DE APOIO ===
+
 def agora():
     return datetime.now()
 
@@ -48,6 +53,14 @@ def limpar_texto(texto):
     texto = re.sub(r'\s+', ' ', texto)
     return texto.strip()
 
+def resposta_fora_do_expediente():
+    return (
+        "Obrigado por entrar em contato comigo.\n\n"
+        "No momento, eu e toda a equipe estamos fora do expediente, renovando as energias para te atender com excelência no próximo horário disponível.\n\n"
+        "Fique tranquilo(a), sua mensagem já foi registrada e será respondida assim que possível.\n\n"
+        f"Se preferir, podemos já deixar um horário agendado:\nAgendamento: {LINK_CALENDLY}"
+    )
+
 def enviar_para_whatsapp(numero, mensagem):
     if not numero:
         print("⚠️ Número vazio. Mensagem não enviada.")
@@ -56,20 +69,13 @@ def enviar_para_whatsapp(numero, mensagem):
     try:
         headers = {
             "Content-Type": "application/json",
-            "Client-Token": ZAPI_TOKEN  # Token vindo da variável de ambiente
+            "Client-Token": ZAPI_TOKEN
         }
-
-        texto_limpo = mensagem.strip()
 
         payload = {
             "phone": numero.strip(),
-            "message": texto_limpo
+            "message": mensagem.strip()
         }
-
-        payload = {k: v for k, v in payload.items() if v}
-
-        print("📦 Enviando para Z-API:")
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
 
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
         response = requests.post(url, json=payload, headers=headers)
@@ -79,13 +85,28 @@ def enviar_para_whatsapp(numero, mensagem):
     except Exception as e:
         print(f"❌ Erro ao enviar mensagem: {e}")
 
-def resposta_fora_do_expediente():
-    return (
-        "Obrigado por entrar em contato comigo.\n\n"
-        "No momento, eu e toda a equipe estamos fora do expediente, renovando as energias para te atender com excelência no próximo horário disponível.\n\n"
-        "Fique tranquilo(a), sua mensagem já foi registrada e será respondida assim que possível.\n\n"
-        f"Se preferir, podemos já deixar um horário agendado:\nAgendamento: {LINK_CALENDLY}"
-    )
+def consultar_gpt4(mensagem_usuario, nome_usuario="Usuário"):
+    try:
+        prompt = (
+            f"Você é um assistente jurídico virtual treinado para responder dúvidas comuns "
+            f"em linguagem simples e educada. Sempre cumprimente o usuário pelo nome.\n\n"
+            f"Mensagem do cliente: {mensagem_usuario}"
+        )
+
+        resposta = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Você é um assistente jurídico especializado."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.5
+        )
+        return resposta['choices'][0]['message']['content'].strip()
+
+    except Exception as e:
+        print(f"❌ Erro na API da OpenAI: {e}")
+        return "Desculpe, não consegui processar sua mensagem no momento. Tente novamente mais tarde."
 
 # === ROTA PRINCIPAL ===
 @app.route("/webhook", methods=["POST"])
@@ -95,11 +116,10 @@ def webhook():
         return jsonify({"error": "Token de autorização inválido."}), 403
 
     data = request.json or {}
-
-    mensagem = data.get("message", "").lower()
-    nome = data.get("senderName", "").strip()
+    mensagem = str(data.get("message", "")).lower()
+    nome = str(data.get("senderName", "")).strip()
     numero = data.get("sender")
-    
+
     if not numero:
         numero = data.get("chatId", "").split("@")[0]
     else:
@@ -111,25 +131,15 @@ def webhook():
     print(f"👤 Nome: {nome}")
     print(f"📱 Número: {numero}")
 
-    # === Regras de Resposta ===
     if not horario_comercial():
         resposta = resposta_fora_do_expediente()
-    elif "inventário" in mensagem:
-        resposta = f"{saudacao()}, {nome}.\n\nVocê está buscando abrir um inventário? Podemos definir se será judicial ou extrajudicial, conforme o caso."
-    elif "processo" in mensagem:
-        resposta = f"{saudacao()}, {nome}.\n\nPosso te ajudar com a situação do processo. Você sabe o número ou assunto envolvido?"
-    elif "contrato" in mensagem:
-        resposta = f"{saudacao()}, {nome}.\n\nVocê deseja elaborar, revisar ou rescindir um contrato? Me envie mais detalhes para que eu entenda melhor."
     else:
-        resposta = f"{saudacao()}, {nome}.\n\nRecebi sua mensagem. Poderia me explicar melhor para que eu possa te orientar com precisão?"
+        resposta = consultar_gpt4(mensagem, nome)
 
     enviar_para_whatsapp(numero, resposta)
-
-    print("✅ Resposta enviada:", resposta)
-
     return jsonify({"response": resposta})
 
-# === ROTAS DE STATUS E ERROS ===
+# === ROTAS DE STATUS ===
 @app.route("/", methods=["GET"])
 def status():
     return jsonify({"status": "online"})
@@ -140,4 +150,5 @@ def not_found(e):
 
 # === INICIAR SERVIDOR ===
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 1000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
