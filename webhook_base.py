@@ -1,15 +1,15 @@
 from flask import Flask, request, jsonify
-from openai import OpenAI
 import os
 import json
+import openai
 from datetime import datetime
 
 app = Flask(__name__)
 
 # === CONFIGURAÇÕES ===
+openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
@@ -107,15 +107,14 @@ Pergunta: {pergunta}
 Se não for possível responder com segurança, oriente o cliente a agendar atendimento pelo link: {LINK_CALENDLY} ou falar direto no WhatsApp {CONTATO_DIRETO}.
     """
 
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
-    response = client.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.5
+        temperature=0.5,
+        api_key=openai.api_key
     )
 
-    texto = response.choices[0].message.content.strip()
+    texto = response.choices[0].message["content"].strip()
     texto += f"\n\n📌 WhatsApp: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} | Agende: {LINK_CALENDLY}"
     return texto
 
