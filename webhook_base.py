@@ -6,7 +6,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# === CONFIGURAÇÕES GERAIS ===
+# === CONFIGURAÇÕES ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_URL_TOKEN")
@@ -32,6 +32,8 @@ PALAVRAS_CHAVE = {
     "holding": "Se deseja estruturar uma holding familiar ou rural, podemos fazer isso com planejamento patrimonial. Quer marcar um diagnóstico?"
 }
 
+# === FUNÇÕES DE APOIO ===
+
 def carregar_controle():
     if os.path.exists(ARQUIVO_CONTROLE):
         with open(ARQUIVO_CONTROLE, "r", encoding="utf-8") as f:
@@ -54,6 +56,8 @@ def mensagem_é_para_grupo(nome_remetente):
 
 def contato_excluido(nome):
     return any(p in nome.lower() for p in CONTATOS_PESSOAIS)
+
+# === WEBHOOK PRINCIPAL ===
 
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
@@ -79,7 +83,7 @@ def receber_mensagem(token):
             print("❌ Ignorado (grupo ou contato pessoal).")
             return jsonify({"status": "ignorado"})
 
-        # ✅ Verificação de horário com exceção para testes com "teste-dayan"
+        # ✅ EXCEÇÃO: Se for teste com "teste-dayan", ignora o horário
         if "teste-dayan" not in mensagem and fora_do_horario():
             resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
         elif mensagem in PALAVRAS_CHAVE:
@@ -93,6 +97,8 @@ def receber_mensagem(token):
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {e}")
         return jsonify({"erro": "Erro interno"}), 500
+
+# === FUNÇÃO GPT-4 ===
 
 def gerar_resposta_gpt(pergunta):
     prompt = f"""
@@ -114,6 +120,8 @@ Se não for possível responder com segurança, oriente o cliente a agendar aten
     texto = resposta.choices[0].message.content.strip()
     texto += f"\n\n📌 Se preferir, fale direto com Dr. Dayan: {CONTATO_DIRETO} ou agende: {LINK_CALENDLY}"
     return texto
+
+# === ROTA DE SAÚDE ===
 
 @app.route("/")
 def home():
