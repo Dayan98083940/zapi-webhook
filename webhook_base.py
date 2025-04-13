@@ -8,23 +8,20 @@ app = Flask(__name__)
 
 # === CONFIGURAÇÕES GERAIS ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
-EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")  # Ex: F124e80fa9ba94101a6eb723b5a20d2b3S
-WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN")  # Ex: 6148D6FDA5C0D66E63947D5B
+EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
+WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_URL_TOKEN")
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
 DIAS_UTEIS = ["segunda", "terça", "quarta", "quinta", "sexta"]
 
-# === CONTATOS A IGNORAR ===
 CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "helder", "felipe"]
 GRUPOS_BLOQUEADOS = ["sagrada família", "providência santa"]
 
-# === DADOS DE CONTATO ===
 CONTATO_DIRETO = "(62) 99981-2069"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ARQUIVO_CONTROLE = "controle_interacoes.json"
 
-# === PALAVRAS-CHAVE ===
 PALAVRAS_CHAVE = {
     "inventário": "Para inventário, podemos dar andamento de forma rápida. Posso te enviar a lista de documentos?",
     "contrato": "Qual contrato você deseja elaborar? Informe o tipo de negócio jurídico para que possamos estruturar com segurança.",
@@ -35,7 +32,6 @@ PALAVRAS_CHAVE = {
     "holding": "Se deseja estruturar uma holding familiar ou rural, podemos fazer isso com planejamento patrimonial. Quer marcar um diagnóstico?"
 }
 
-# === FUNÇÕES AUXILIARES ===
 def carregar_controle():
     if os.path.exists(ARQUIVO_CONTROLE):
         with open(ARQUIVO_CONTROLE, "r", encoding="utf-8") as f:
@@ -59,10 +55,9 @@ def mensagem_é_para_grupo(nome_remetente):
 def contato_excluido(nome):
     return any(p in nome.lower() for p in CONTATOS_PESSOAIS)
 
-# === WEBHOOK DE RECEBIMENTO ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
-    if token != WEBHOOK_TOKEN:
+    if token != WEBHOOK_URL_TOKEN:
         return jsonify({"erro": "Token inválido na URL."}), 403
 
     client_token = request.headers.get("Client-Token")
@@ -72,31 +67,7 @@ def receber_mensagem(token):
         return jsonify({"erro": "Headers inválidos."}), 403
 
     data = request.json
-        try:
-        mensagem = data.get("message", "").strip().lower()
-        numero = data.get("phone", "")
-        nome = data.get("name", "")
 
-        print(f"\n[{datetime.now()}] 📥 Mensagem de {numero} ({nome}): {mensagem}")
-
-        if mensagem_é_para_grupo(nome) or contato_excluido(nome):
-            print("❌ Ignorado (grupo ou contato pessoal).")
-            return jsonify({"status": "ignorado"})
-
-        # 👇 Aqui entra o teste de horário com exceção para o comando "teste-dayan"
-        if "teste-dayan" not in mensagem and fora_do_horario():
-            resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
-        elif mensagem in PALAVRAS_CHAVE:
-            resposta = PALAVRAS_CHAVE[mensagem]
-        else:
-            resposta = gerar_resposta_gpt(mensagem)
-
-        print(f"📤 Resposta enviada: {resposta}")
-        return jsonify({"response": resposta})
-
-    except Exception as e:
-        print(f"❌ Erro ao processar mensagem: {e}")
-        return jsonify({"erro": "Erro interno"}), 500
     try:
         mensagem = data.get("message", "").strip().lower()
         numero = data.get("phone", "")
@@ -108,7 +79,7 @@ def receber_mensagem(token):
             print("❌ Ignorado (grupo ou contato pessoal).")
             return jsonify({"status": "ignorado"})
 
-        # 👇 Aqui entra o teste de horário com exceção para o comando "teste-dayan"
+        # ✅ Verificação de horário com exceção para testes com "teste-dayan"
         if "teste-dayan" not in mensagem and fora_do_horario():
             resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
         elif mensagem in PALAVRAS_CHAVE:
@@ -123,7 +94,6 @@ def receber_mensagem(token):
         print(f"❌ Erro ao processar mensagem: {e}")
         return jsonify({"erro": "Erro interno"}), 500
 
-# === GPT-4 PARA RESPOSTAS LIVRES ===
 def gerar_resposta_gpt(pergunta):
     prompt = f"""
 Você é assistente jurídico do escritório Teixeira.Brito Advogados, liderado por Dayan, especialista em contratos, sucessões, holding e renegociação de dívidas.
@@ -133,7 +103,7 @@ Responda com educação, clareza, objetividade e segurança jurídica no estilo 
 Pergunta: {pergunta}
 
 Se não for possível responder com segurança, oriente o cliente a agendar atendimento pelo link: {LINK_CALENDLY} ou falar direto no WhatsApp {CONTATO_DIRETO}.
-"""
+    """
 
     resposta = openai.chat.completions.create(
         model="gpt-4",
@@ -142,10 +112,9 @@ Se não for possível responder com segurança, oriente o cliente a agendar aten
     )
 
     texto = resposta.choices[0].message.content.strip()
-    texto += f"\n\n📌 Se preferir, fale direto com Dr. Dayan: {CONTATO_DIRETO} ou agende aqui: {LINK_CALENDLY}"
+    texto += f"\n\n📌 Se preferir, fale direto com Dr. Dayan: {CONTATO_DIRETO} ou agende: {LINK_CALENDLY}"
     return texto
 
-# === ROTA DE TESTE ===
 @app.route("/")
 def home():
     return "🟢 Servidor está rodando com GPT-4 + Z-API"
