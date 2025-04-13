@@ -1,15 +1,15 @@
 from flask import Flask, request, jsonify
 import os
 import json
-import openai
 from datetime import datetime
+# import openai  # Comentado para teste sem erro 500
 
 app = Flask(__name__)
 
 # === CONFIGURAÇÕES ===
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# openai.api_key = os.getenv("OPENAI_API_KEY")  # Habilite depois do teste
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
-WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")  # Corrigido aqui
+WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
@@ -18,7 +18,8 @@ DIAS_UTEIS = ["segunda", "terça", "quarta", "quinta", "sexta"]
 CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "helder", "felipe"]
 GRUPOS_BLOQUEADOS = ["sagrada família", "providência santa"]
 
-CONTATO_DIRETO = "(62) 99981-2069"
+CONTATO_DIRETO = "+55(62)99808-3940"
+EMAIL_CONTATO = "dayan@advgoias.com.br"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ARQUIVO_CONTROLE = "controle_interacoes.json"
 
@@ -83,43 +84,19 @@ def receber_mensagem(token):
             print("❌ Ignorado (grupo ou contato pessoal).")
             return jsonify({"status": "ignorado"})
 
-        # ✅ EXCEÇÃO: Se for teste com "teste-dayan", ignora o horário
         if "teste-dayan" not in mensagem and fora_do_horario():
             resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
         elif mensagem in PALAVRAS_CHAVE:
             resposta = PALAVRAS_CHAVE[mensagem]
         else:
-            resposta = gerar_resposta_gpt(mensagem)
+            resposta = f"✅ Resposta simulada. GPT-4 receberia: '{mensagem}'"
 
         print(f"📤 Resposta enviada: {resposta}")
-        return jsonify({"response": resposta})
+        return jsonify({"response": f"{resposta}\n\n📌 Fale com Dr. Dayan: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} ou agende: {LINK_CALENDLY}"})
 
     except Exception as e:
-        print(f"❌ Erro ao processar mensagem: {e}")
-        return jsonify({"erro": "Erro interno"}), 500
-
-# === FUNÇÃO GPT-4 ===
-
-def gerar_resposta_gpt(pergunta):
-    prompt = f"""
-Você é assistente jurídico do escritório Teixeira.Brito Advogados, liderado por Dayan, especialista em contratos, sucessões, holding e renegociação de dívidas.
-
-Responda com educação, clareza, objetividade e segurança jurídica no estilo Dayan.
-
-Pergunta: {pergunta}
-
-Se não for possível responder com segurança, oriente o cliente a agendar atendimento pelo link: {LINK_CALENDLY} ou falar direto no WhatsApp {CONTATO_DIRETO}.
-    """
-
-    resposta = openai.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.5
-    )
-
-    texto = resposta.choices[0].message.content.strip()
-    texto += f"\n\n📌 Se preferir, fale direto com Dr. Dayan: {CONTATO_DIRETO} ou agende: {LINK_CALENDLY}"
-    return texto
+        print(f"❌ Erro ao processar mensagem: {repr(e)}")
+        return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
 # === ROTA DE SAÚDE ===
 
