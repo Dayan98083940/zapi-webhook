@@ -44,46 +44,66 @@ def mensagem_pertence_a_grupo(nome):
 def contato_excluido(nome):
     return any(p in nome.lower() for p in CONTATOS_PESSOAIS)
 
-# === PALAVRAS-CHAVE (respostas serão completadas posteriormente) ===
+# === IDENTIFICADOR DE PALAVRA-CHAVE ===
+def identificar_palavra_chave(texto):
+    texto = texto.lower()
+    if "inventário" in texto:
+        return "inventário"
+    elif "contrato" in texto:
+        return "contrato"
+    elif "divórcio" in texto:
+        return "divórcio"
+    elif "leilão" in texto:
+        return "leilão"
+    elif "obra" in texto and "atras" in texto:
+        return "atraso de obra"
+    elif any(p in texto for p in ["usucapião", "averbação", "formalizar", "imóvel irregular", "regularizar"]):
+        return "regularização de imóveis"
+    elif "holding familiar" in texto:
+        return "holding familiar"
+    elif "holding rural" in texto:
+        return "holding rural"
+    elif "holding imobiliária" in texto:
+        return "holding imobiliária"
+    elif "holding" in texto:
+        return "holding"
+    else:
+        return None
+
+# === PALAVRAS-CHAVE (exemplo reduzido) ===
 PALAVRAS_CHAVE = {
-    "inventário": "...",
-    "contrato": "...",
-    "divórcio": "...",
-    "leilão": "...",
-    "atraso de obra": "...",
-    "regularização de imóveis": "...",
-    "holding": "...",
-    "holding familiar": "...",
-    "holding rural": "...",
-    "holding imobiliária": "...",
-    "averbação": "regularização de imóveis",
-    "usucapião": "regularização de imóveis",
-    "imóvel irregular": "regularização de imóveis"
+    "inventário": "Mensagem padrão para inventário...",
+    "contrato": "Mensagem padrão para contrato..."
 }
 
 # === ROTA PRINCIPAL ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
+        print("[ERRO] Token inválido na URL.")
         return jsonify({"erro": "Token inválido na URL."}), 403
 
     client_token = request.headers.get("Client-Token")
     content_type = request.headers.get("Content-Type")
 
     if client_token != EXPECTED_CLIENT_TOKEN or content_type != "application/json":
+        print("[ERRO] Headers inválidos.")
         return jsonify({"erro": "Headers inválidos."}), 403
 
     data = request.json
     try:
-        mensagem = data.get("message", "").strip().lower()
+        mensagem = data.get("message", "").strip()
         numero = data.get("phone", "")
         nome = data.get("name", "Cliente")
 
+        print(f"📥 Mensagem recebida de {numero} ({nome}): {mensagem}")
+
         if mensagem_pertence_a_grupo(nome) or contato_excluido(nome):
+            print("[INFO] Mensagem ignorada (grupo ou contato pessoal).")
             return jsonify({"status": "ignorado"})
 
         saudacao = gerar_saudacao()
-        chave = mensagem.strip()
+        chave = identificar_palavra_chave(mensagem)
 
         if chave in PALAVRAS_CHAVE:
             resposta_base = PALAVRAS_CHAVE.get(PALAVRAS_CHAVE[chave], PALAVRAS_CHAVE[chave])
@@ -92,12 +112,14 @@ def receber_mensagem(token):
 
         resposta = f"{saudacao}, Sr(a). {nome}.\n\n{resposta_base}"
 
+        print(f"📤 Resposta enviada: {resposta}")
         return jsonify({"response": resposta})
 
     except Exception as e:
+        print(f"❌ Erro interno ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === GPT para perguntas abertas ===
+# === GPT PARA RESPOSTAS GERAIS ===
 def gerar_resposta_gpt(pergunta):
     prompt = f"""
 Você é assistente jurídico do escritório Teixeira.Brito Advogados, liderado pelo Dr. Dayan. Especialista em contratos, sucessões, holding, renegociação de dívidas e regularização de imóveis.
@@ -116,7 +138,7 @@ Pergunta: {pergunta}
     )
     return resposta.choices[0].message["content"].strip()
 
-# === ROTA DE SAÚDE ===
+# === ROTA DE STATUS ===
 @app.route("/")
 def home():
     return "🟢 Servidor Teixeira.Brito com assistente digital ativo."
