@@ -30,7 +30,33 @@ PALAVRAS_CHAVE = {
     "renegociação de dívidas": "Trabalhamos com renegociação de dívidas bancárias e empresariais. Me diga um pouco sobre sua situação.",
     "atraso de obra": "Você está com problema em obra atrasada? Podemos verificar se há fundamento para restituição ou ação por descumprimento.",
     "leilão": "Você deseja participar de um leilão ou evitar um? Atendemos ambos os casos com segurança jurídica.",
-    "holding": "Se deseja estruturar uma holding familiar ou rural, podemos fazer isso com planejamento patrimonial. Quer marcar um diagnóstico?"
+
+    "holding": (
+        "A holding é uma estrutura jurídica voltada para proteger, organizar e controlar bens e empresas. "
+        "Ela pode assumir diferentes formatos e finalidades, como:\n\n"
+        "🔹 *Holding Familiar*: foco no planejamento sucessório e na proteção do patrimônio da família;\n"
+        "🔹 *Holding Rural*: voltada para produtores e proprietários de terras, facilita a sucessão e organização patrimonial do agronegócio;\n"
+        "🔹 *Holding Imobiliária*: ideal para quem possui imóveis, centraliza a gestão, facilita a sucessão e gera benefícios fiscais.\n\n"
+        f"Cada tipo exige análise personalizada. Agende um atendimento em {LINK_CALENDLY} ou fale no WhatsApp {CONTATO_DIRETO}."
+    ),
+
+    "holding familiar": (
+        "A holding familiar é uma ferramenta eficaz para proteger o patrimônio da família, planejar a sucessão e reduzir custos com inventário. "
+        "Permite organizar os bens em uma empresa, com cotas divididas entre os membros da família, evitando conflitos e garantindo continuidade.\n\n"
+        f"Para saber como aplicar esse modelo no seu caso, agende em {LINK_CALENDLY} ou chame no WhatsApp {CONTATO_DIRETO}."
+    ),
+
+    "holding rural": (
+        "A holding rural é ideal para produtores que desejam planejar a sucessão da fazenda, proteger seus bens e administrar melhor o patrimônio familiar. "
+        "Ela evita a fragmentação de terras, reduz impostos em caso de doação e facilita o controle da atividade agrícola.\n\n"
+        f"Se quiser saber como aplicar no seu caso, agende conosco: {LINK_CALENDLY} ou fale pelo WhatsApp {CONTATO_DIRETO}."
+    ),
+
+    "holding imobiliária": (
+        "A holding imobiliária permite administrar e proteger imóveis próprios ou alugados de forma eficiente. "
+        "Ela facilita a sucessão dos bens, reduz impostos em doações e centraliza a gestão patrimonial.\n\n"
+        f"Se você possui imóveis e quer estruturar isso com segurança, agende um diagnóstico em {LINK_CALENDLY} ou envie mensagem para {CONTATO_DIRETO}."
+    )
 }
 
 def carregar_controle():
@@ -119,4 +145,4 @@ Se não for possível responder com segurança, oriente o cliente a agendar aten
 
 @app.route("/")
 def home():
-    return "🟢 Servidor ativo com OpenAI v0.28.1"
+    return "🟢 Servidor ativo com GPT-4, pronto para orientar sobre holdings e muito mais."
