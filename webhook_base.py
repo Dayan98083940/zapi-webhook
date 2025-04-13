@@ -19,8 +19,6 @@ CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "helder",
 GRUPOS_BLOQUEADOS = ["sagrada família", "providência santa"]
 
 CONTATO_DIRETO = "+55(62)99808-3940"
-EMAIL_CONTATO = "dayan@advgoias.com.br"
-LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ARQUIVO_CONTROLE = "controle_interacoes.json"
 
 PALAVRAS_CHAVE = {
@@ -34,28 +32,25 @@ PALAVRAS_CHAVE = {
     "holding": (
         "A holding é uma estrutura jurídica voltada para proteger, organizar e controlar bens e empresas. "
         "Ela pode assumir diferentes formatos e finalidades, como:\n\n"
-        "🔹 *Holding Familiar*: foco no planejamento sucessório e na proteção do patrimônio da família;\n"
-        "🔹 *Holding Rural*: voltada para produtores e proprietários de terras, facilita a sucessão e organização patrimonial do agronegócio;\n"
-        "🔹 *Holding Imobiliária*: ideal para quem possui imóveis, centraliza a gestão, facilita a sucessão e gera benefícios fiscais.\n\n"
-        f"Cada tipo exige análise personalizada. Agende um atendimento em {LINK_CALENDLY} ou fale no WhatsApp {CONTATO_DIRETO}."
+        "🔹 Holding Familiar: planejamento sucessório e proteção do patrimônio da família;\n"
+        "🔹 Holding Rural: organização patrimonial no agronegócio;\n"
+        "🔹 Holding Imobiliária: administração e proteção de imóveis.\n\n"
+        f"Cada tipo exige análise personalizada. 📌 Ligue para: {CONTATO_DIRETO}"
     ),
 
     "holding familiar": (
-        "A holding familiar é uma ferramenta eficaz para proteger o patrimônio da família, planejar a sucessão e reduzir custos com inventário. "
-        "Permite organizar os bens em uma empresa, com cotas divididas entre os membros da família, evitando conflitos e garantindo continuidade.\n\n"
-        f"Para saber como aplicar esse modelo no seu caso, agende em {LINK_CALENDLY} ou chame no WhatsApp {CONTATO_DIRETO}."
+        "A holding familiar protege o patrimônio da família, facilita a sucessão e reduz custos com inventário. "
+        f"📌 Ligue para: {CONTATO_DIRETO}"
     ),
 
     "holding rural": (
-        "A holding rural é ideal para produtores que desejam planejar a sucessão da fazenda, proteger seus bens e administrar melhor o patrimônio familiar. "
-        "Ela evita a fragmentação de terras, reduz impostos em caso de doação e facilita o controle da atividade agrícola.\n\n"
-        f"Se quiser saber como aplicar no seu caso, agende conosco: {LINK_CALENDLY} ou fale pelo WhatsApp {CONTATO_DIRETO}."
+        "A holding rural evita a fragmentação das terras, reduz impostos na doação e protege a estrutura agrícola da família. "
+        f"📌 Ligue para: {CONTATO_DIRETO}"
     ),
 
     "holding imobiliária": (
-        "A holding imobiliária permite administrar e proteger imóveis próprios ou alugados de forma eficiente. "
-        "Ela facilita a sucessão dos bens, reduz impostos em doações e centraliza a gestão patrimonial.\n\n"
-        f"Se você possui imóveis e quer estruturar isso com segurança, agende um diagnóstico em {LINK_CALENDLY} ou envie mensagem para {CONTATO_DIRETO}."
+        "A holding imobiliária centraliza a gestão de imóveis, reduz impostos e facilita a sucessão. "
+        f"📌 Ligue para: {CONTATO_DIRETO}"
     )
 }
 
@@ -107,16 +102,14 @@ def receber_mensagem(token):
             return jsonify({"status": "ignorado"})
 
         if "teste-dayan" not in mensagem and fora_do_horario():
-            resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
+            resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. 📌 Ligue para: {CONTATO_DIRETO}"
         elif mensagem in PALAVRAS_CHAVE:
             resposta = PALAVRAS_CHAVE[mensagem]
         else:
             resposta = gerar_resposta_gpt(mensagem)
 
         print(f"📤 Resposta enviada: {resposta}")
-        return jsonify({
-            "response": f"{resposta}\n\n📌 Fale com Dr. Dayan: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} | Agende: {LINK_CALENDLY}"
-        })
+        return jsonify({"response": resposta})
 
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
@@ -130,7 +123,7 @@ Responda com educação, clareza, objetividade e segurança jurídica no estilo 
 
 Pergunta: {pergunta}
 
-Se não for possível responder com segurança, oriente o cliente a agendar atendimento pelo link: {LINK_CALENDLY} ou falar direto no WhatsApp {CONTATO_DIRETO}.
+Se não for possível responder com segurança, oriente o cliente a entrar em contato direto com Dr. Dayan.
     """
 
     response = openai.ChatCompletion.create(
@@ -140,9 +133,9 @@ Se não for possível responder com segurança, oriente o cliente a agendar aten
     )
 
     texto = response.choices[0].message["content"].strip()
-    texto += f"\n\n📌 WhatsApp: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} | Agende: {LINK_CALENDLY}"
+    texto += f"\n\n📌 Ligue para: {CONTATO_DIRETO}"
     return texto
 
 @app.route("/")
 def home():
-    return "🟢 Servidor ativo com GPT-4, pronto para orientar sobre holdings e muito mais."
+    return "🟢 Servidor ativo com GPT-4 e respostas personalizadas do Dr. Dayan."
