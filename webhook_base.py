@@ -60,6 +60,8 @@ def enviar_para_whatsapp(numero, mensagem):
             "Content-Type": "application/json",
             "Client-Token": EXPECTED_CLIENT_TOKEN
         }
+       
+        print(f"📡 Enviando com headers: {headers}")
 
         texto_limpo = limpar_texto(str(mensagem))
 
