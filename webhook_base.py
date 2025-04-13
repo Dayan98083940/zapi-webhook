@@ -12,17 +12,14 @@ EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
 
 CONTATO_DIRETO = "+55(62)99808-3940"
+CONTATO_FIXO = "(62) 3922-3940"
+CONTATO_BACKUP = "(62) 99981-2069"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
-CONTATO_ATENDIMENTO = "(62) 3922-3940 ou (62)99981-2069"
 
-HORARIO_INICIO = 8
-HORARIO_FIM = 18
-DIAS_UTEIS = ["segunda", "terça", "quarta", "quinta", "sexta"]
-
-CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "helder", "felipe"]
 GRUPOS_BLOQUEADOS = ["sagrada família", "providência santa"]
+CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "felipe", "helder"]
 
-# === SAUDAÇÃO AUTOMÁTICA ===
+# === SAUDAÇÃO POR HORÁRIO ===
 def gerar_saudacao():
     hora = datetime.now().hour
     if hora < 12:
@@ -32,23 +29,17 @@ def gerar_saudacao():
     else:
         return "Boa noite"
 
-# === FUNÇÕES DE APOIO ===
-def fora_do_horario():
-    agora = datetime.now()
-    dia_semana = agora.strftime("%A").lower()
-    return dia_semana not in DIAS_UTEIS or not (HORARIO_INICIO <= agora.hour < HORARIO_FIM)
-
-def mensagem_pertence_a_grupo(nome):
-    return any(g in nome.lower() for g in GRUPOS_BLOQUEADOS)
+# === FILTROS ===
+def mensagem_é_para_grupo(nome_remetente):
+    return any(g in nome_remetente.lower() for g in GRUPOS_BLOQUEADOS)
 
 def contato_excluido(nome):
     return any(p in nome.lower() for p in CONTATOS_PESSOAIS)
 
-# === ROTA PRINCIPAL ===
+# === WEBHOOK PRINCIPAL ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
-        print("[ERRO] Token inválido na URL.")
         return jsonify({"erro": "Token inválido na URL."}), 403
 
     client_token = request.headers.get("Client-Token")
@@ -62,45 +53,60 @@ def receber_mensagem(token):
     try:
         mensagem = data.get("message", "").strip()
         numero = data.get("phone", "")
-        nome = data.get("name", "Cliente")
+        nome = data.get("name", "")
 
         print(f"📥 Mensagem recebida de {numero} ({nome}): {mensagem}")
 
-        if mensagem_pertence_a_grupo(nome) or contato_excluido(nome):
-            print("[INFO] Mensagem ignorada (grupo ou contato pessoal).")
-            return jsonify({"status": "ignorado"})
-
-        saudacao = gerar_saudacao()
-        resposta_base = gerar_resposta_gpt(mensagem)
-
-        resposta = f"{saudacao}, Sr(a). {nome}.\n\n{resposta_base}"
-
+        resposta = gerar_resposta_gpt(mensagem, nome)
         print(f"📤 Resposta enviada: {resposta}")
         return jsonify({"response": resposta})
 
     except Exception as e:
-        print(f"❌ Erro interno ao processar mensagem: {repr(e)}")
+        print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === GPT PARA RESPOSTAS GERAIS ===
-def gerar_resposta_gpt(pergunta):
+# === GPT-4 COM LÓGICA INTELIGENTE ===
+def gerar_resposta_gpt(pergunta, nome_cliente):
+    saudacao = gerar_saudacao()
+    pergunta_lower = pergunta.lower()
+    explicativo = any(p in pergunta_lower for p in ["o que é", "como funciona", "para que serve", "pra que serve"])
+
+    if explicativo:
+        introducao = f"{saudacao}, Sr(a). {nome_cliente}.\n\nClaro, vou te explicar de forma objetiva:\n"
+    else:
+        introducao = (
+            f"{saudacao}, Sr(a). {nome_cliente}.\n\n"
+            "Antes de te orientar com segurança, preciso entender melhor sua situação. "
+            "Por gentileza, me conte um pouco mais:"
+        )
+
     prompt = f"""
-Você é um assistente jurídico que representa o Dr. Dayan, do escritório Teixeira.Brito Advogados. Especialista em contratos, sucessões, holding, regularização de imóveis, renegociação de dívidas e demandas familiares.
+Você é o assistente jurídico digital do Dr. Dayan, advogado especialista em contratos, sucessões, holdings, regularização de imóveis, renegociação de dívidas e proteção patrimonial.
 
-Responda de forma respeitosa, investigativa e objetiva. Sempre inicie com uma pergunta aberta ou direcionadora e ao final oriente:
-📌 Ligue para: {CONTATO_DIRETO} ou agende: {LINK_CALENDLY}
-Se não conseguir falar diretamente com o Dr. Dayan, entre em contato com o atendimento: {CONTATO_ATENDIMENTO}
+Responda de forma clara, profissional e humanizada, no estilo do Dr. Dayan.  
+Use linguagem simples, segura e investigativa.
 
-Mensagem recebida: {pergunta}
-"""
-    resposta = openai.ChatCompletion.create(
+⚠️ Só explique o que é, como funciona ou para que serve se a pergunta for direta.  
+Caso contrário, acolha, faça perguntas abertas e direcione para atendimento.
+
+Finalize sempre com:
+
+📌 Ligue para: {CONTATO_DIRETO} ou agende: {LINK_CALENDLY}  
+Se não conseguir falar com o Dr. Dayan, entre em contato com o atendimento: {CONTATO_FIXO} ou {CONTATO_BACKUP}
+
+Pergunta recebida: {pergunta}
+    """
+
+    response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
-    return resposta.choices[0].message["content"].strip()
+
+    texto = response.choices[0].message["content"].strip()
+    return f"{introducao}\n\n{texto}"
 
 # === ROTA DE STATUS ===
 @app.route("/")
 def home():
-    return "🟢 Servidor Teixeira.Brito com assistente digital ativo."
+    return "🟢 Integração Whats TB ativa com GPT-4 e estilo Dayan"
