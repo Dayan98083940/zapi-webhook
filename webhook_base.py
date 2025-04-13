@@ -65,7 +65,7 @@ def receber_mensagem(token):
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === GPT-4 COM LÓGICA INTELIGENTE ===
+# === GPT-4 ESTILO DAYAN ===
 def gerar_resposta_gpt(pergunta, nome_cliente):
     saudacao = gerar_saudacao()
     pergunta_lower = pergunta.lower()
@@ -77,25 +77,27 @@ def gerar_resposta_gpt(pergunta, nome_cliente):
         introducao = (
             f"{saudacao}, Sr(a). {nome_cliente}.\n\n"
             "Antes de te orientar com segurança, preciso entender melhor sua situação. "
-            "Por gentileza, me conte um pouco mais:"
+            "Pode me contar, resumidamente, o que está acontecendo?"
         )
 
     prompt = f"""
 Você é o assistente jurídico digital do Dr. Dayan, advogado especialista em contratos, sucessões, holdings, regularização de imóveis, renegociação de dívidas e proteção patrimonial.
 
-Responda de forma clara, profissional e humanizada, no estilo do Dr. Dayan.  
-Use linguagem simples, segura e investigativa.
-
-⚠️ Só explique o que é, como funciona ou para que serve se a pergunta for direta.  
-Caso contrário, acolha, faça perguntas abertas e direcione para atendimento.
-
-Finalize sempre com:
+Seu estilo de resposta deve seguir o padrão Dayan:
+- Formal, respeitoso e direto.
+- Comece acolhendo o cliente com base na situação apresentada.
+- Se a pergunta for do tipo "o que é", "como funciona", "para que serve", explique com clareza e brevidade.
+- Caso contrário, investigue com perguntas curtas e assertivas para compreender a necessidade real.
+- Não repita frases genéricas ou vazias.
+- Limite a resposta a no máximo 3 parágrafos curtos.
+- Finalize sempre com:
 
 📌 Ligue para: {CONTATO_DIRETO} ou agende: {LINK_CALENDLY}  
 Se não conseguir falar com o Dr. Dayan, entre em contato com o atendimento: {CONTATO_FIXO} ou {CONTATO_BACKUP}
 
-Pergunta recebida: {pergunta}
-    """
+Mensagem recebida do cliente:
+{pergunta}
+"""
 
     response = openai.ChatCompletion.create(
         model="gpt-4",
@@ -109,4 +111,4 @@ Pergunta recebida: {pergunta}
 # === ROTA DE STATUS ===
 @app.route("/")
 def home():
-    return "🟢 Integração Whats TB ativa com GPT-4 e estilo Dayan"
+    return "🟢 Integração Whats TB ativa com Estilo Dayan"
