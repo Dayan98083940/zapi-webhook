@@ -79,6 +79,16 @@ def formatar_resposta(texto_base, assunto="geral"):
     return texto_base + assinatura + complemento
 
 # === ROTA PRINCIPAL ===
+@app.route("/webhook/<token>/receive", methods=["POST"])
+def webhook_receive(token):
+    if token != EXPECTED_CLIENT_TOKEN:
+        return jsonify({"error": "Token inválido na URL do /receive"}), 403
+
+    data = request.json or {}
+    print("📩 Mensagem recebida da Z-API:")
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+    return jsonify({"status": "received"})
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Client-Token") or request.args.get("token")
