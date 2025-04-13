@@ -12,3 +12,6 @@ services:
       - key: CLIENT_TOKEN
         sync: false
     autoDeploy: true
+{
+  "message": "holding teste-dayan"
+}
