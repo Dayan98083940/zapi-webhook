@@ -12,3 +12,5 @@ source venv/bin/activate     # Linux/macOS
 venv\Scripts\activate.bat    # Windows
 python -c "import emoji; print(emoji.replace_emoji('Olá 😊 mundo!', replace=''))"
 python app.py
+pip uninstall openai -y
+pip install openai==0.28.1
