@@ -140,4 +140,4 @@ def not_found(e):
 
 # === INICIAR SERVIDOR ===
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 100
+    port = int(os.environ.get("PORT", 1000)
