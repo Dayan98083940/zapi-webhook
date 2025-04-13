@@ -50,6 +50,7 @@ def enviar_para_whatsapp(numero, mensagem):
     if not numero:
         print("⚠️ Número vazio. Mensagem não enviada.")
         return
+
     try:
         headers = {
             "Content-Type": "application/json",
@@ -65,6 +66,7 @@ def enviar_para_whatsapp(numero, mensagem):
             "message": texto_limpo
         }
 
+        # Remover qualquer campo vazio
         payload = {k: v for k, v in payload.items() if v}
 
         print("📦 Payload a ser enviado para Z-API:")
@@ -73,7 +75,11 @@ def enviar_para_whatsapp(numero, mensagem):
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
         response = requests.post(url, json=payload, headers=headers)
 
-        print(f"📤 Mensagem enviada para {
+        # ✅ Linha corrigida:
+        print(f"📤 Mensagem enviada para {numero}: {response.status_code} - {response.text}")
+
+    except Exception as e:
+        print(f"❌ Erro ao enviar mensagem: {e}")
 
 def resposta_fora_do_expediente():
     return (
