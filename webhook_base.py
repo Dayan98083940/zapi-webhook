@@ -89,20 +89,37 @@ def webhook_receive(token):
     print(json.dumps(data, indent=2, ensure_ascii=False))
     return jsonify({"status": "received"})
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    token = request.headers.get("Client-Token") or request.args.get("token")
-    if not token or token != EXPECTED_CLIENT_TOKEN:
-        return jsonify({"error": "Token inválido ou ausente."}), 403
+@app.route("/webhook/<token>/receive", methods=["POST"])
+def webhook_receive(token):
+    client_token_header = request.headers.get("Client-Token")
+    content_type = request.headers.get("Content-Type")
+
+    if token != EXPECTED_CLIENT_TOKEN or client_token_header != EXPECTED_CLIENT_TOKEN:
+        return jsonify({"error": "Token inválido"}), 403
+
+    if content_type != "application/json":
+        return jsonify({"error": "Content-Type inválido"}), 415
 
     data = request.json or {}
-    mensagem = data.get("message", "").lower()
-    nome = data.get("senderName", "")
-    grupo = data.get("groupName", "")
-    numero = data.get("sender") or data.get("chatId", "").split("@")[0]
-
-    print("Dados recebidos:")
+    print("📩 Mensagem recebida da Z-API:")
     print(json.dumps(data, indent=2, ensure_ascii=False))
+    return jsonify({"status": "received"})
+
+@app.route("/webhook/<token>/send", methods=["POST"])
+def webhook_send(token):
+    client_token_header = request.headers.get("Client-Token")
+    content_type = request.headers.get("Content-Type")
+
+    if token != EXPECTED_CLIENT_TOKEN or client_token_header != EXPECTED_CLIENT_TOKEN:
+        return jsonify({"error": "Token inválido"}), 403
+
+    if content_type != "application/json":
+        return jsonify({"error": "Content-Type inválido"}), 415
+
+    data = request.json or {}
+    print("📤 Status de envio recebido da Z-API:")
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+    return jsonify({"status": "acknowledged"})
 
     if "inventário" in mensagem:
         resposta = formatar_resposta("Você deseja abrir um inventário judicial ou extrajudicial? Posso orientá-lo quanto aos documentos necessários e ao procedimento.", "inventário")
