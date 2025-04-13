@@ -1,15 +1,15 @@
 from flask import Flask, request, jsonify
+from openai import OpenAI
 import os
 import json
-import openai
 from datetime import datetime
 
 app = Flask(__name__)
 
 # === CONFIGURAÇÕES ===
-openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
@@ -33,8 +33,6 @@ PALAVRAS_CHAVE = {
     "holding": "Se deseja estruturar uma holding familiar ou rural, podemos fazer isso com planejamento patrimonial. Quer marcar um diagnóstico?"
 }
 
-# === FUNÇÕES DE APOIO ===
-
 def carregar_controle():
     if os.path.exists(ARQUIVO_CONTROLE):
         with open(ARQUIVO_CONTROLE, "r", encoding="utf-8") as f:
@@ -57,8 +55,6 @@ def mensagem_é_para_grupo(nome_remetente):
 
 def contato_excluido(nome):
     return any(p in nome.lower() for p in CONTATOS_PESSOAIS)
-
-# === WEBHOOK PRINCIPAL ===
 
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
@@ -92,13 +88,13 @@ def receber_mensagem(token):
             resposta = gerar_resposta_gpt(mensagem)
 
         print(f"📤 Resposta enviada: {resposta}")
-        return jsonify({"response": f"{resposta}\n\n📌 Fale com Dr. Dayan: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} ou agende: {LINK_CALENDLY}"})
+        return jsonify({
+            "response": f"{resposta}\n\n📌 Fale com Dr. Dayan: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} | Agende: {LINK_CALENDLY}"
+        })
 
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
-
-# === GPT-4 ===
 
 def gerar_resposta_gpt(pergunta):
     prompt = f"""
@@ -111,18 +107,18 @@ Pergunta: {pergunta}
 Se não for possível responder com segurança, oriente o cliente a agendar atendimento pelo link: {LINK_CALENDLY} ou falar direto no WhatsApp {CONTATO_DIRETO}.
     """
 
-    resposta = openai.chat.completions.create(
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
 
-    texto = resposta.choices[0].message.content.strip()
+    texto = response.choices[0].message.content.strip()
     texto += f"\n\n📌 WhatsApp: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} | Agende: {LINK_CALENDLY}"
     return texto
 
-# === ROTA DE SAÚDE ===
-
 @app.route("/")
 def home():
-    return "🟢 Servidor está rodando com GPT-4 + Z-API"
+    return "🟢 Servidor ativo com GPT-4 + Z-API"
