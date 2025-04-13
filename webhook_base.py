@@ -3,12 +3,14 @@ import os
 import json
 import requests
 import re
+import openai
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
 # === VARIÁVEIS DE AMBIENTE ===
-EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or os.getenv("TOKEN_DA_INSTANCIA")
+openai.api_key = os.getenv("OPENAI_API_KEY")
+EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN") or "F124e80fa9ba94101a6eb723b5a20d2b3S"
 ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
 
@@ -28,10 +30,8 @@ def horario_comercial():
     hora = agora().hour
     return dia in DIAS_UTEIS and HORARIO_INICIO <= hora < HORARIO_FIM
 
-import emoji
-
 def remover_emojis(texto):
-    return emoji.replace_emoji(texto, replace='')
+    return re.sub(r'[^\x00-\x7F]+', '', texto)
 
 def limpar_texto(texto):
     texto = remover_emojis(texto)
@@ -45,7 +45,7 @@ def enviar_para_whatsapp(numero, mensagem):
     try:
         headers = {
             "Content-Type": "application/json",
-            "Client-Token": EXPECTED_CLIENT_TOKEN  # REINSERIDO AQUI
+            "Client-Token": EXPECTED_CLIENT_TOKEN
         }
 
         texto_limpo = limpar_texto(str(mensagem))
@@ -54,6 +54,7 @@ def enviar_para_whatsapp(numero, mensagem):
             "phone": numero.strip(),
             "message": texto_limpo
         }
+
         payload = {k: v for k, v in payload.items() if v}
 
         print("📦 Payload a ser enviado para Z-API:")
@@ -67,35 +68,86 @@ def enviar_para_whatsapp(numero, mensagem):
 
 def formatar_resposta(texto_base, assunto="geral"):
     assinatura = (
-        "\n\nCaso precise de mais informações, agende um horário comigo ou entre em contato:"
+        "\n\nSe precisar de mais informações, agende um horário ou entre em contato diretamente:"
         "\nAgendamento: https://calendly.com/dayan-advgoias"
         f"\nTelefone: {CONTATO_DIRETO}"
     )
     if "processo" in assunto:
-        complemento = "\n\nSe possível, informe o número do atendimento ou processo. Podemos também agendar uma reunião presencial ou virtual para tratar os detalhes."
+        complemento = "\n\nPor gentileza, informe o número do processo ou atendimento. Se preferir, podemos agendar uma reunião presencial ou virtual para tratar os detalhes."
+    elif "genérica" in assunto:
+        complemento = "\n\nSua solicitação está um pouco genérica. Encaminharei para atendimento direto ou podemos agendar um horário para entender melhor."
     else:
-        complemento = "\n\nPosso te auxiliar em mais alguma demanda?"
+        complemento = "\n\nHá mais alguma informação que possa me fornecer para te ajudar com precisão?"
 
     return texto_base + assinatura + complemento
 
+def gerar_resposta_gpt(mensagem, nome):
+    prompt = f"""
+Você é um assistente jurídico representando o advogado Dr. Dayan.
+
+Seu papel é iniciar o atendimento com abordagem formal, técnica e objetiva, e qualificar a solicitação.
+
+Sempre encerre com proposta de agendamento ou contato direto com o Dr. Dayan.
+
+Mensagem recebida:
+\"{mensagem}\"
+Remetente: {nome}
+"""
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=400
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Erro ao gerar resposta com GPT-4: {e}")
+        return "Recebemos sua mensagem. Podemos conversar por atendimento direto ou agendar um horário."
+
 # === ROTA PRINCIPAL ===
-@app.route("/webhook/<token>/receive", methods=["POST"])
-def webhook_receive(token):
-    if token != EXPECTED_CLIENT_TOKEN:
-        return jsonify({"error": "Token inválido na URL do /receive"}), 403
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    token = request.headers.get("Client-Token") or request.args.get("token")
+    if not token or token != EXPECTED_CLIENT_TOKEN:
+        return jsonify({"error": "Token inválido ou ausente."}), 403
 
     data = request.json or {}
-    print("📩 Mensagem recebida da Z-API:")
-    print(json.dumps(data, indent=2, ensure_ascii=False))
-    return jsonify({"status": "received"})
+    mensagem = data.get("message", "").lower()
+    nome = data.get("senderName", "")
+    grupo = data.get("groupName", "")
+    numero = data.get("sender") or data.get("chatId", "").split("@")[0]
 
+    print("🧩 DADOS RECEBIDOS:")
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+
+    if "inventário" in mensagem:
+        resposta = formatar_resposta("Você está buscando abrir um inventário? Podemos definir se será judicial ou extrajudicial, conforme o caso.", "inventário")
+    elif "processo" in mensagem:
+        resposta = formatar_resposta("Posso te ajudar com a situação do processo. Você sabe o número ou assunto envolvido?", "processo")
+    elif "contrato" in mensagem:
+        resposta = formatar_resposta("Você deseja elaborar, revisar ou rescindir um contrato? Me envie mais detalhes para que eu entenda melhor.", "contrato")
+    elif not horario_comercial():
+        resposta = formatar_resposta("Olá. No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).", "fora_horario")
+    else:
+        resposta = gerar_resposta_gpt(mensagem, nome)
+
+    enviar_para_whatsapp(numero, resposta)
+
+    print("📞 Telefone:", numero)
+    print("📨 Mensagem recebida:", mensagem)
+    print("✅ Resposta enviada:", resposta)
+
+    return jsonify({"response": resposta})
+
+# === ROTAS DA Z-API COM AUTENTICAÇÃO ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def webhook_receive(token):
     client_token_header = request.headers.get("Client-Token")
     content_type = request.headers.get("Content-Type")
 
     if token != EXPECTED_CLIENT_TOKEN or client_token_header != EXPECTED_CLIENT_TOKEN:
-        return jsonify({"error": "Token inválido"}), 403
+        return jsonify({"error": "Token inválido no /receive"}), 403
 
     if content_type != "application/json":
         return jsonify({"error": "Content-Type inválido"}), 415
@@ -111,7 +163,7 @@ def webhook_send(token):
     content_type = request.headers.get("Content-Type")
 
     if token != EXPECTED_CLIENT_TOKEN or client_token_header != EXPECTED_CLIENT_TOKEN:
-        return jsonify({"error": "Token inválido"}), 403
+        return jsonify({"error": "Token inválido no /send"}), 403
 
     if content_type != "application/json":
         return jsonify({"error": "Content-Type inválido"}), 415
@@ -121,26 +173,6 @@ def webhook_send(token):
     print(json.dumps(data, indent=2, ensure_ascii=False))
     return jsonify({"status": "acknowledged"})
 
-    if "inventário" in mensagem:
-        resposta = formatar_resposta("Você deseja abrir um inventário judicial ou extrajudicial? Posso orientá-lo quanto aos documentos necessários e ao procedimento.", "inventário")
-    elif "processo" in mensagem:
-        resposta = formatar_resposta("Em relação ao processo, posso ajudar com análise, acompanhamento ou defesa, conforme o caso.", "processo")
-    elif "contrato" in mensagem:
-        resposta = formatar_resposta("Certo. Qual é o tipo de contrato que você precisa elaborar ou revisar?", "contrato")
-    elif not horario_comercial():
-        resposta = formatar_resposta("Olá. No momento estamos fora do horário de atendimento (segunda a sexta, das 8h às 18h).", "fora_horario")
-    else:
-        resposta = formatar_resposta("Recebido. Por gentileza, forneça mais detalhes para que eu possa atendê-lo da melhor forma.")
-
-    enviar_para_whatsapp(numero, resposta)
-
-    print("Telefone:", numero)
-    print("Mensagem recebida:", mensagem)
-    print("Resposta enviada:", resposta)
-
-    return jsonify({"response": resposta})
-
-# === ROTA DE STATUS ===
 @app.route("/", methods=["GET"])
 def status():
     return jsonify({"status": "online"})
