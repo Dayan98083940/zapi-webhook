@@ -83,13 +83,14 @@ def receber_mensagem(token):
             print("❌ Ignorado (grupo ou contato pessoal).")
             return jsonify({"status": "ignorado"})
 
-        if "teste-dayan" not in mensagem and fora_do_horario():
+        # Verifica se está fora do horário E a mensagem não contém o código de teste
+if "teste-dayan" not in mensagem and fora_do_horario():
     resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
-     
-        elif mensagem in PALAVRAS_CHAVE:
-            resposta = PALAVRAS_CHAVE[mensagem]
-        else:
-            resposta = gerar_resposta_gpt(mensagem)
+elif mensagem in PALAVRAS_CHAVE:
+    resposta = PALAVRAS_CHAVE[mensagem]
+else:
+    resposta = gerar_resposta_gpt(mensagem)
+
 
         print(f"📤 Resposta enviada: {resposta}")
         return jsonify({"response": resposta})
