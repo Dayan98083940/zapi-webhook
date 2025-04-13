@@ -65,31 +65,26 @@ def receber_mensagem(token):
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === GPT-4 ESTILO DAYAN ===
+# === GPT-4 COM ESTILO DAYAN ===
 def gerar_resposta_gpt(pergunta, nome_cliente):
     saudacao = gerar_saudacao()
-    pergunta_lower = pergunta.lower()
-    explicativo = any(p in pergunta_lower for p in ["o que é", "como funciona", "para que serve", "pra que serve"])
 
-    if explicativo:
-        introducao = f"{saudacao}, Sr(a). {nome_cliente}.\n\nClaro, vou te explicar de forma objetiva:\n"
-    else:
-        introducao = (
-            f"{saudacao}, Sr(a). {nome_cliente}.\n\n"
-            "Antes de te orientar com segurança, preciso entender melhor sua situação. "
-            "Pode me contar, resumidamente, o que está acontecendo?"
-        )
+    introducao = (
+        f"{saudacao}, Sr(a). {nome_cliente}.\n\n"
+        "Antes de te orientar com segurança, preciso entender melhor sua situação.\n"
+        "📌 Pode me contar, de forma breve, o que está acontecendo ou qual é sua dúvida?\n"
+    )
 
     prompt = f"""
-Você é o assistente jurídico digital do Dr. Dayan, advogado especialista em contratos, sucessões, holdings, regularização de imóveis, renegociação de dívidas e proteção patrimonial.
+Você é um assistente IA da Teixeira Brito Advogados.
 
-Seu estilo de resposta deve seguir o padrão Dayan:
-- Formal, respeitoso e direto.
-- Comece acolhendo o cliente com base na situação apresentada.
-- Se a pergunta for do tipo "o que é", "como funciona", "para que serve", explique com clareza e brevidade.
-- Caso contrário, investigue com perguntas curtas e assertivas para compreender a necessidade real.
-- Não repita frases genéricas ou vazias.
-- Limite a resposta a no máximo 3 parágrafos curtos.
+Estilo da resposta:
+- Formal, investigativo e direto.
+- NÃO EXPLIQUE conceitos jurídicos (ex: não diga o que é holding, como funciona usucapião, etc.), mesmo que o cliente pergunte diretamente.
+- Sua função é acolher, investigar e encaminhar o cliente para o atendimento humano.
+- Use perguntas curtas e estratégicas para entender a demanda.
+- Nunca repita informações ou frases genéricas como “parece que você tem uma dúvida”.
+- Responda em no máximo 3 parágrafos objetivos.
 - Finalize sempre com:
 
 📌 Ligue para: {CONTATO_DIRETO} ou agende: {LINK_CALENDLY}  
@@ -102,7 +97,7 @@ Mensagem recebida do cliente:
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.5
+        temperature=0.4
     )
 
     texto = response.choices[0].message["content"].strip()
@@ -111,4 +106,4 @@ Mensagem recebida do cliente:
 # === ROTA DE STATUS ===
 @app.route("/")
 def home():
-    return "🟢 Integração Whats TB ativa com Estilo Dayan"
+    return "🟢 Integração Whats TB ativa — Estilo Dayan aplicado com IA da Teixeira Brito Advogados"
