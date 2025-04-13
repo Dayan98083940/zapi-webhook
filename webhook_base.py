@@ -12,10 +12,10 @@ app = Flask(__name__)
 CORS(app)
 
 # === VARIÁVEIS DE AMBIENTE ===
-EXPECTED_TOKEN = os.getenv("CLIENT_TOKEN") or "F124e80fa9ba94101a6eb723b5a20d2b3S"
-ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID") or "SUA_INSTANCE_ID_AQUI"
-ZAPI_TOKEN = os.getenv("ZAPI_TOKEN") or "SEU_ZAPI_TOKEN_AQUI"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or "SUA_CHAVE_OPENAI_AQUI"
+EXPECTED_TOKEN = os.getenv("CLIENT_TOKEN", "F124e80fa9ba94101a6eb723b5a20d2b3S")
+ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID", "SUA_INSTANCE_ID_AQUI")
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "SEU_ZAPI_TOKEN_AQUI")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "SUA_CHAVE_OPENAI_AQUI")
 
 # === CONFIGURAÇÕES ===
 HORARIO_INICIO = 8
@@ -23,10 +23,10 @@ HORARIO_FIM = 18
 DIAS_UTEIS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
-# === CONFIGURAÇÃO OPENAI ===
+# === CONFIGURANDO OPENAI ===
 openai.api_key = OPENAI_API_KEY
 
-# === FUNÇÕES DE APOIO ===
+# === FUNÇÕES AUXILIARES ===
 
 def agora():
     return datetime.now()
@@ -89,14 +89,15 @@ def consultar_gpt4(mensagem_usuario, nome_usuario="Usuário"):
     try:
         prompt = (
             f"Você é um assistente jurídico virtual treinado para responder dúvidas comuns "
-            f"em linguagem simples e educada. Sempre cumprimente o usuário pelo nome.\n\n"
-            f"Mensagem do cliente: {mensagem_usuario}"
+            f"em linguagem simples, educada e clara. Sempre cumprimente o usuário pelo nome.\n\n"
+            f"Nome do usuário: {nome_usuario}\n"
+            f"Mensagem recebida: {mensagem_usuario}"
         )
 
         resposta = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "Você é um assistente jurídico especializado."},
+                {"role": "system", "content": "Você é um assistente jurídico especializado em direito civil, sucessões e contratos."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=500,
@@ -108,28 +109,24 @@ def consultar_gpt4(mensagem_usuario, nome_usuario="Usuário"):
         print(f"❌ Erro na API da OpenAI: {e}")
         return "Desculpe, não consegui processar sua mensagem no momento. Tente novamente mais tarde."
 
-# === ROTA PRINCIPAL ===
+# === WEBHOOK ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    if not token or token != EXPECTED_TOKEN:
+    if token != EXPECTED_TOKEN:
         return jsonify({"error": "Token de autorização inválido."}), 403
 
     data = request.json or {}
     mensagem = str(data.get("message", "")).lower()
     nome = str(data.get("senderName", "")).strip()
-    numero = data.get("sender")
+    numero = data.get("sender") or data.get("chatId", "").split("@")[0]
+    numero = numero.split("@")[0] if "@" in numero else numero
+
+    print("📥 Mensagem recebida:")
+    print(json.dumps(data, indent=2, ensure_ascii=False))
 
     if not numero:
-        numero = data.get("chatId", "").split("@")[0]
-    else:
-        numero = numero.split("@")[0]
-
-    print("🧩 DADOS RECEBIDOS:")
-    print(json.dumps(data, indent=2, ensure_ascii=False))
-    print(f"📥 Mensagem: {mensagem}")
-    print(f"👤 Nome: {nome}")
-    print(f"📱 Número: {numero}")
+        return jsonify({"error": "Número do remetente ausente."}), 400
 
     if not horario_comercial():
         resposta = resposta_fora_do_expediente()
@@ -139,7 +136,7 @@ def webhook():
     enviar_para_whatsapp(numero, resposta)
     return jsonify({"response": resposta})
 
-# === ROTAS DE STATUS ===
+# === ROTA DE STATUS ===
 @app.route("/", methods=["GET"])
 def status():
     return jsonify({"status": "online"})
@@ -148,7 +145,7 @@ def status():
 def not_found(e):
     return jsonify({"error": "Rota não encontrada"}), 404
 
-# === INICIAR SERVIDOR ===
+# === INICIALIZAÇÃO LOCAL ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
