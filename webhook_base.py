@@ -9,7 +9,7 @@ app = Flask(__name__)
 # === CONFIGURAÇÕES GERAIS ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")  # Ex: F124e80fa9ba94101a6eb723b5a20d2b3S
-WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_URL_TOKEN")  # Ex: 6148D6FDA5C0D66E63947D5B
+WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN")  # Ex: 6148D6FDA5C0D66E63947D5B
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
@@ -62,7 +62,7 @@ def contato_excluido(nome):
 # === WEBHOOK DE RECEBIMENTO ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
-    if token != WEBHOOK_URL_TOKEN:
+    if token != WEBHOOK_TOKEN:
         return jsonify({"erro": "Token inválido na URL."}), 403
 
     client_token = request.headers.get("Client-Token")
