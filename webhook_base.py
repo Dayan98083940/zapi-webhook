@@ -1,13 +1,13 @@
 from flask import Flask, request, jsonify
 import os
 import json
+import openai
 from datetime import datetime
-# import openai  # Comentado para teste sem erro 500
 
 app = Flask(__name__)
 
 # === CONFIGURAÇÕES ===
-# openai.api_key = os.getenv("OPENAI_API_KEY")  # Habilite depois do teste
+openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
 
@@ -89,7 +89,7 @@ def receber_mensagem(token):
         elif mensagem in PALAVRAS_CHAVE:
             resposta = PALAVRAS_CHAVE[mensagem]
         else:
-            resposta = f"✅ Resposta simulada. GPT-4 receberia: '{mensagem}'"
+            resposta = gerar_resposta_gpt(mensagem)
 
         print(f"📤 Resposta enviada: {resposta}")
         return jsonify({"response": f"{resposta}\n\n📌 Fale com Dr. Dayan: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} ou agende: {LINK_CALENDLY}"})
@@ -97,6 +97,29 @@ def receber_mensagem(token):
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
+
+# === GPT-4 ===
+
+def gerar_resposta_gpt(pergunta):
+    prompt = f"""
+Você é assistente jurídico do escritório Teixeira.Brito Advogados, liderado por Dayan, especialista em contratos, sucessões, holding e renegociação de dívidas.
+
+Responda com educação, clareza, objetividade e segurança jurídica no estilo Dayan.
+
+Pergunta: {pergunta}
+
+Se não for possível responder com segurança, oriente o cliente a agendar atendimento pelo link: {LINK_CALENDLY} ou falar direto no WhatsApp {CONTATO_DIRETO}.
+    """
+
+    resposta = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.5
+    )
+
+    texto = resposta.choices[0].message.content.strip()
+    texto += f"\n\n📌 WhatsApp: {CONTATO_DIRETO} | 📧 {EMAIL_CONTATO} | Agende: {LINK_CALENDLY}"
+    return texto
 
 # === ROTA DE SAÚDE ===
 
