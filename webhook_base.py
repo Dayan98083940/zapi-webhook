@@ -72,6 +72,31 @@ def receber_mensagem(token):
         return jsonify({"erro": "Headers inválidos."}), 403
 
     data = request.json
+        try:
+        mensagem = data.get("message", "").strip().lower()
+        numero = data.get("phone", "")
+        nome = data.get("name", "")
+
+        print(f"\n[{datetime.now()}] 📥 Mensagem de {numero} ({nome}): {mensagem}")
+
+        if mensagem_é_para_grupo(nome) or contato_excluido(nome):
+            print("❌ Ignorado (grupo ou contato pessoal).")
+            return jsonify({"status": "ignorado"})
+
+        # 👇 Aqui entra o teste de horário com exceção para o comando "teste-dayan"
+        if "teste-dayan" not in mensagem and fora_do_horario():
+            resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
+        elif mensagem in PALAVRAS_CHAVE:
+            resposta = PALAVRAS_CHAVE[mensagem]
+        else:
+            resposta = gerar_resposta_gpt(mensagem)
+
+        print(f"📤 Resposta enviada: {resposta}")
+        return jsonify({"response": resposta})
+
+    except Exception as e:
+        print(f"❌ Erro ao processar mensagem: {e}")
+        return jsonify({"erro": "Erro interno"}), 500
     try:
         mensagem = data.get("message", "").strip().lower()
         numero = data.get("phone", "")
@@ -83,14 +108,13 @@ def receber_mensagem(token):
             print("❌ Ignorado (grupo ou contato pessoal).")
             return jsonify({"status": "ignorado"})
 
-# Verifica se está fora do horário E a mensagem não contém o código de teste
-if "teste-dayan" not in mensagem and fora_do_horario():
-    resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
-elif mensagem in PALAVRAS_CHAVE:
-    resposta = PALAVRAS_CHAVE[mensagem]
-else:
-    resposta = gerar_resposta_gpt(mensagem)
-
+        # 👇 Aqui entra o teste de horário com exceção para o comando "teste-dayan"
+        if "teste-dayan" not in mensagem and fora_do_horario():
+            resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
+        elif mensagem in PALAVRAS_CHAVE:
+            resposta = PALAVRAS_CHAVE[mensagem]
+        else:
+            resposta = gerar_resposta_gpt(mensagem)
 
         print(f"📤 Resposta enviada: {resposta}")
         return jsonify({"response": resposta})
