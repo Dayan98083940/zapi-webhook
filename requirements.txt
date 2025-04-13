@@ -10,3 +10,4 @@ flask-cors
 requests
 emoji
 openai
+flask-cors==4.0.0
