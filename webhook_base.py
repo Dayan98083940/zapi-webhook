@@ -9,7 +9,7 @@ app = Flask(__name__)
 # === CONFIGURAÇÕES ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
-WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_URL_TOKEN")
+WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")  # Corrigido aqui
 
 HORARIO_INICIO = 8
 HORARIO_FIM = 18
