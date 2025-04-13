@@ -83,8 +83,9 @@ def receber_mensagem(token):
             print("❌ Ignorado (grupo ou contato pessoal).")
             return jsonify({"status": "ignorado"})
 
-        if fora_do_horario():
-            resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
+         if "teste-dayan" not in mensagem and fora_do_horario():
+         resposta = f"Olá! Nosso atendimento é de segunda a sexta, das 08h às 18h. Deseja agendar um horário? {LINK_CALENDLY}"
+      
         elif mensagem in PALAVRAS_CHAVE:
             resposta = PALAVRAS_CHAVE[mensagem]
         else:
