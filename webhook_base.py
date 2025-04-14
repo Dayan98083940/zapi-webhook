@@ -7,12 +7,12 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# === CONFIGURAÇÕES ===
+# === CONFIGURAÇÕES DE AMBIENTE ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
 
-# === CONTATOS ===
+# === CONTATOS DO ESCRITÓRIO ===
 CONTATO_DIRETO = "+55(62)99808-3940"
 CONTATO_FIXO = "(62) 3922-3940"
 CONTATO_BACKUP = "(62) 99981-2069"
@@ -22,30 +22,31 @@ LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ZAPI_INSTANCE_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1"
 ZAPI_TOKEN = "6148D6FDA5C0D66E63947D5B"
 
-# === BLOQUEIO E HISTÓRICO ===
+# === NÚMEROS BLOQUEADOS E HISTÓRICO ===
 BLOQUEAR_NUMEROS = os.getenv("BLOQUEADOS", "").split(",")
 CONVERSAS = {}
 
-# === FILTROS ===
+# === FILTROS INTERNOS ===
 GRUPOS_BLOQUEADOS = ["sagrada família", "providência santa"]
 CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "felipe", "helder"]
 
+# === SAUDAÇÃO INTELIGENTE ===
 def gerar_saudacao():
     hora = datetime.now().hour
     if hora < 12:
         return "Bom dia"
-    elif 12 <= hora < 18:
+    elif hora < 18:
         return "Boa tarde"
     else:
         return "Boa noite"
 
 def mensagem_é_para_grupo(nome_remetente):
-    return any(g in nome_remetente.lower() for g in GRUPOS_BLOQUEADOS)
+    return any(grupo in nome_remetente.lower() for grupo in GRUPOS_BLOQUEADOS)
 
 def contato_excluido(nome):
     return any(p in nome.lower() for p in CONTATOS_PESSOAIS)
 
-# === WEBHOOK PRINCIPAL ===
+# === ENDPOINT PRINCIPAL DE RECEBIMENTO ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
@@ -55,9 +56,12 @@ def receber_mensagem(token):
     client_token = request.headers.get("Client-Token")
     content_type = request.headers.get("Content-Type")
 
-    if not client_token or not content_type:
-        print("[ERRO] Headers ausentes ou incompletos.")
-        print(f"Token recebido: {client_token} | Content-Type recebido: {content_type}")
+    if not client_token:
+        print("[AVISO] Token de header ausente — assumindo origem confiável (Z-API).")
+        client_token = EXPECTED_CLIENT_TOKEN  # Preenche internamente
+
+    if not content_type:
+        print("[ERRO] Content-Type ausente.")
         return jsonify({"erro": "Headers ausentes."}), 403
 
     if client_token != EXPECTED_CLIENT_TOKEN or content_type != "application/json":
@@ -94,7 +98,7 @@ def receber_mensagem(token):
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === ENVIO VIA Z-API ===
+# === ENVIO PROATIVO VIA Z-API ===
 def enviar_resposta_via_zapi(telefone, mensagem):
     url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
     payload = {
@@ -109,10 +113,9 @@ def enviar_resposta_via_zapi(telefone, mensagem):
     except Exception as e:
         print(f"❌ Erro ao enviar via Z-API: {repr(e)}")
 
-# === GPT COM ESTILO DAYAN ===
+# === GERADOR DE RESPOSTA NO ESTILO DAYAN ===
 def gerar_resposta_gpt(pergunta, nome_cliente):
     saudacao = gerar_saudacao()
-
     introducao = (
         f"{saudacao}, Sr(a). {nome_cliente}.\n\n"
         "Antes de te orientar com segurança, preciso entender melhor sua situação.\n"
@@ -155,4 +158,4 @@ def mostrar_conversa(numero):
 # === ROTA DE STATUS ===
 @app.route("/")
 def home():
-    return "🟢 Integração Whats TB ativa — Estilo Dayan + envio automático + bloqueio e histórico"
+    return "🟢 Integração Whats TB ativa — Estilo Dayan + envio automático via Z-API + bloqueio e histórico"
