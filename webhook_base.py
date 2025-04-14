@@ -12,7 +12,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
 
-# === DADOS DO ESCRITÓRIO ===
+# === CONTATOS ===
 CONTATO_DIRETO = "+55(62)99808-3940"
 CONTATO_FIXO = "(62) 3922-3940"
 CONTATO_BACKUP = "(62) 99981-2069"
@@ -22,7 +22,7 @@ LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ZAPI_INSTANCE_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1"
 ZAPI_TOKEN = "6148D6FDA5C0D66E63947D5B"
 
-# === FILTROS EXCLUÍDOS ===
+# === FILTROS ===
 GRUPOS_BLOQUEADOS = ["sagrada família", "providência santa"]
 CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "felipe", "helder"]
 
@@ -36,14 +36,13 @@ def gerar_saudacao():
     else:
         return "Boa noite"
 
-# === FILTROS ===
 def mensagem_é_para_grupo(nome_remetente):
     return any(g in nome_remetente.lower() for g in GRUPOS_BLOQUEADOS)
 
 def contato_excluido(nome):
     return any(p in nome.lower() for p in CONTATOS_PESSOAIS)
 
-# === WEBHOOK DE RECEBIMENTO ===
+# === WEBHOOK PRINCIPAL ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
@@ -68,47 +67,37 @@ def receber_mensagem(token):
     try:
         data = request.json
         mensagem = data.get("message", "").strip()
-        numero = data.get("phone", "")
+        numero = data.get("phone", "").strip()
         nome = data.get("name", "")
 
         print(f"📥 Mensagem recebida de {numero} ({nome}): {mensagem}")
 
         resposta = gerar_resposta_gpt(mensagem, nome)
-        print(f"📤 Resposta enviada: {resposta}")
-        return jsonify({"response": resposta})
+        print(f"📤 Resposta gerada: {resposta}")
+
+        enviar_resposta_via_zapi(numero, resposta)
+        return jsonify({"status": "ok", "enviado_para": numero})
 
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === ENVIO PROATIVO VIA Z-API ===
-@app.route("/enviar-mensagem", methods=["POST"])
-def enviar_mensagem():
+# === ENVIO VIA Z-API ===
+def enviar_resposta_via_zapi(telefone, mensagem):
+    url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
+    payload = {
+        "phone": telefone,
+        "message": mensagem
+    }
+    headers = {"Content-Type": "application/json"}
     try:
-        data = request.json
-        numero = data.get("phone", "").strip()
-        texto = data.get("message", "").strip()
-
-        if not numero or not texto:
-            return jsonify({"erro": "Número e mensagem são obrigatórios"}), 400
-
-        url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
-        payload = {
-            "phone": numero,
-            "message": texto
-        }
-
-        headers = {"Content-Type": "application/json"}
         response = requests.post(url, json=payload, headers=headers)
-
-        print(f"✅ Mensagem enviada via Z-API para {numero}: {texto}")
-        return jsonify({"status": "ok", "zapi_response": response.json()})
-
+        print(f"📤 Mensagem enviada para {telefone} via Z-API.")
+        print(f"🧾 Resposta da Z-API: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"❌ Erro ao enviar mensagem via Z-API: {repr(e)}")
-        return jsonify({"erro": str(e)}), 500
+        print(f"❌ Erro ao enviar via Z-API: {repr(e)}")
 
-# === GERADOR DE RESPOSTA GPT (ESTILO DAYAN) ===
+# === GERADOR DE RESPOSTA GPT ===
 def gerar_resposta_gpt(pergunta, nome_cliente):
     saudacao = gerar_saudacao()
 
@@ -146,7 +135,7 @@ Mensagem recebida do cliente:
     texto = response.choices[0].message["content"].strip()
     return f"{introducao}\n\n{texto}"
 
-# === ROTA DE STATUS ===
+# === STATUS CHECK ===
 @app.route("/")
 def home():
-    return "🟢 Integração Whats TB ativa — Estilo Dayan + envio proativo via Z-API"
+    return "🟢 Integração Whats TB ativa — Estilo Dayan + envio automático via Z-API"
