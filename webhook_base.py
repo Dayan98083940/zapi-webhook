@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import json
 import openai
+import requests
 from datetime import datetime
 
 app = Flask(__name__)
@@ -11,11 +12,17 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 EXPECTED_CLIENT_TOKEN = os.getenv("CLIENT_TOKEN")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
 
+# === DADOS DO ESCRITÓRIO ===
 CONTATO_DIRETO = "+55(62)99808-3940"
 CONTATO_FIXO = "(62) 3922-3940"
 CONTATO_BACKUP = "(62) 99981-2069"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
+# === Z-API ENVIO ATIVO ===
+ZAPI_INSTANCE_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1"
+ZAPI_TOKEN = "6148D6FDA5C0D66E63947D5B"
+
+# === FILTROS EXCLUÍDOS ===
 GRUPOS_BLOQUEADOS = ["sagrada família", "providência santa"]
 CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "felipe", "helder"]
 
@@ -36,7 +43,7 @@ def mensagem_é_para_grupo(nome_remetente):
 def contato_excluido(nome):
     return any(p in nome.lower() for p in CONTATOS_PESSOAIS)
 
-# === WEBHOOK PRINCIPAL ===
+# === WEBHOOK DE RECEBIMENTO ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
@@ -46,21 +53,20 @@ def receber_mensagem(token):
     client_token = request.headers.get("Client-Token")
     content_type = request.headers.get("Content-Type")
 
-    # === VALIDAÇÃO COMPLETA DOS HEADERS ===
     if not client_token or not content_type:
         print("[ERRO] Headers ausentes ou incompletos.")
         print(f"Token recebido: {client_token} | Content-Type recebido: {content_type}")
         return jsonify({"erro": "Headers ausentes."}), 403
 
     if client_token != EXPECTED_CLIENT_TOKEN or content_type != "application/json":
-        print(f"[ERRO] Headers inválidos.")
+        print("[ERRO] Headers inválidos.")
         print(f"Token esperado: {EXPECTED_CLIENT_TOKEN}")
         print(f"Token recebido: {client_token}")
         print(f"Content-Type recebido: {content_type}")
         return jsonify({"erro": "Headers inválidos."}), 403
 
-    data = request.json
     try:
+        data = request.json
         mensagem = data.get("message", "").strip()
         numero = data.get("phone", "")
         nome = data.get("name", "")
@@ -75,7 +81,34 @@ def receber_mensagem(token):
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === GPT-4 COM ESTILO DAYAN ===
+# === ENVIO PROATIVO VIA Z-API ===
+@app.route("/enviar-mensagem", methods=["POST"])
+def enviar_mensagem():
+    try:
+        data = request.json
+        numero = data.get("phone", "").strip()
+        texto = data.get("message", "").strip()
+
+        if not numero or not texto:
+            return jsonify({"erro": "Número e mensagem são obrigatórios"}), 400
+
+        url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
+        payload = {
+            "phone": numero,
+            "message": texto
+        }
+
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(url, json=payload, headers=headers)
+
+        print(f"✅ Mensagem enviada via Z-API para {numero}: {texto}")
+        return jsonify({"status": "ok", "zapi_response": response.json()})
+
+    except Exception as e:
+        print(f"❌ Erro ao enviar mensagem via Z-API: {repr(e)}")
+        return jsonify({"erro": str(e)}), 500
+
+# === GERADOR DE RESPOSTA GPT (ESTILO DAYAN) ===
 def gerar_resposta_gpt(pergunta, nome_cliente):
     saudacao = gerar_saudacao()
 
@@ -116,4 +149,4 @@ Mensagem recebida do cliente:
 # === ROTA DE STATUS ===
 @app.route("/")
 def home():
-    return "🟢 Integração Whats TB ativa — Estilo Dayan + headers verificados com log"
+    return "🟢 Integração Whats TB ativa — Estilo Dayan + envio proativo via Z-API"
