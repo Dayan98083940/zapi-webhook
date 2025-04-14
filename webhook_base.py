@@ -45,8 +45,13 @@ def receber_mensagem(token):
     client_token = request.headers.get("Client-Token")
     content_type = request.headers.get("Content-Type")
 
+    # NOVO BLOCO DE VALIDAÇÃO DE HEADERS
+    if not client_token or not content_type:
+        print("[ERRO] Headers ausentes ou incompletos.")
+        return jsonify({"erro": "Headers ausentes."}), 403
+
     if client_token != EXPECTED_CLIENT_TOKEN or content_type != "application/json":
-        print("[ERRO] Headers inválidos.")
+        print(f"[ERRO] Headers inválidos. Token recebido: {client_token}")
         return jsonify({"erro": "Headers inválidos."}), 403
 
     data = request.json
@@ -106,4 +111,4 @@ Mensagem recebida do cliente:
 # === ROTA DE STATUS ===
 @app.route("/")
 def home():
-    return "🟢 Integração Whats TB ativa — Estilo Dayan aplicado com IA da Teixeira Brito Advogados"
+    return "🟢 Integração Whats TB ativa — Estilo Dayan + validação de headers aplicada"
