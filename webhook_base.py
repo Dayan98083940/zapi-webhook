@@ -19,7 +19,6 @@ CONTATO_DIRETO = "+55(62)99808-3940"
 CONTATO_FIXO = "(62) 3922-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
-# === CONTROLE ===
 BLOQUEAR_NUMEROS = os.getenv("BLOQUEADOS", "").split(",")
 CONVERSAS = {}
 ATENDIMENTO_MANUAL = {}
@@ -47,7 +46,10 @@ def identificar_tipo_demanda(mensagem):
     return False
 
 def demanda_esta_clara(mensagem):
-    palavras_chave = ["abrir", "fazer", "realizar", "constituir", "iniciar", "resolver", "contrato", "holding", "inventário"]
+    palavras_chave = [
+        "abrir", "fazer", "realizar", "constituir", "iniciar", "resolver",
+        "contrato", "holding", "inventário", "divórcio", "empresa"
+    ]
     return any(p in mensagem.lower() for p in palavras_chave) and len(mensagem.split()) >= 8
 
 def formata_tratamento(nome):
@@ -148,4 +150,4 @@ def mostrar_conversa(numero):
 
 @app.route("/")
 def home():
-    return "🟢 Whats TB — Concierge Inteligente com Filtro de Mensagem Vazia"
+    return "🟢 Whats TB — Concierge Inteligente com Saudações a qualquer hora"
