@@ -22,11 +22,14 @@ LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 ZAPI_INSTANCE_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1"
 ZAPI_TOKEN = "6148D6FDA5C0D66E63947D5B"
 
+# === BLOQUEIO E HISTÓRICO ===
+BLOQUEAR_NUMEROS = os.getenv("BLOQUEADOS", "").split(",")
+CONVERSAS = {}
+
 # === FILTROS ===
 GRUPOS_BLOQUEADOS = ["sagrada família", "providência santa"]
 CONTATOS_PESSOAIS = ["pai", "mab", "joão", "pedro", "amor", "érika", "felipe", "helder"]
 
-# === SAUDAÇÃO POR HORÁRIO ===
 def gerar_saudacao():
     hora = datetime.now().hour
     if hora < 12:
@@ -72,8 +75,17 @@ def receber_mensagem(token):
 
         print(f"📥 Mensagem recebida de {numero} ({nome}): {mensagem}")
 
+        if numero in BLOQUEAR_NUMEROS:
+            print(f"⛔ Número bloqueado: {numero}")
+            return jsonify({"status": "bloqueado", "mensagem": "Número ignorado pelo sistema."})
+
         resposta = gerar_resposta_gpt(mensagem, nome)
         print(f"📤 Resposta gerada: {resposta}")
+
+        if numero not in CONVERSAS:
+            CONVERSAS[numero] = []
+        CONVERSAS[numero].append(f"Cliente: {mensagem}")
+        CONVERSAS[numero].append(f"Assistente: {resposta}")
 
         enviar_resposta_via_zapi(numero, resposta)
         return jsonify({"status": "ok", "enviado_para": numero})
@@ -97,7 +109,7 @@ def enviar_resposta_via_zapi(telefone, mensagem):
     except Exception as e:
         print(f"❌ Erro ao enviar via Z-API: {repr(e)}")
 
-# === GERADOR DE RESPOSTA GPT ===
+# === GPT COM ESTILO DAYAN ===
 def gerar_resposta_gpt(pergunta, nome_cliente):
     saudacao = gerar_saudacao()
 
@@ -135,7 +147,12 @@ Mensagem recebida do cliente:
     texto = response.choices[0].message["content"].strip()
     return f"{introducao}\n\n{texto}"
 
-# === STATUS CHECK ===
+# === CONSULTA DE HISTÓRICO ===
+@app.route("/conversas/<numero>", methods=["GET"])
+def mostrar_conversa(numero):
+    return jsonify(CONVERSAS.get(numero, ["Sem histórico para este número."]))
+
+# === ROTA DE STATUS ===
 @app.route("/")
 def home():
-    return "🟢 Integração Whats TB ativa — Estilo Dayan + envio automático via Z-API"
+    return "🟢 Integração Whats TB ativa — Estilo Dayan + envio automático + bloqueio e histórico"
