@@ -1,10 +1,3 @@
-from pathlib import Path
-
-# Caminho para salvar o novo código com regras de grupo ajustadas
-code_path = Path("/mnt/data/webhook_base_grupos_com_controle.py")
-
-# Código completo com envio condicional para grupos e bloqueios aplicados
-codigo_final = '''
 from flask import Flask, request, jsonify
 import os
 import json
@@ -14,21 +7,26 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+# === CONFIGURAÇÕES ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 WEBHOOK_URL_TOKEN = os.getenv("WEBHOOK_TOKEN")
 EXPECTED_CLIENT_TOKEN = "F124e80fa9ba94101a6eb723b5a20d2b3S"
 
+# === CONTATOS ===
 CONTATO_DIRETO = "+55(62)99808-3940"
 CONTATO_FIXO = "(62) 3922-3940"
 CONTATO_BACKUP = "(62) 99981-2069"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
+# === Z-API ===
 ZAPI_INSTANCE_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062CE0C1"
 ZAPI_TOKEN = "6148D6FDA5C0D66E63947D5B"
 
+# === BLOQUEIOS E HISTÓRICO ===
 BLOQUEAR_NUMEROS = os.getenv("BLOQUEADOS", "").split(",")
 CONVERSAS = {}
 
+# === FUNÇÕES AUXILIARES ===
 def gerar_saudacao():
     hora = datetime.now().hour
     if hora < 12:
@@ -38,9 +36,11 @@ def gerar_saudacao():
     else:
         return "Boa noite"
 
+# === ROTAS PRINCIPAIS ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
+        print("[ERRO] Token inválido na URL.")
         return jsonify({"erro": "Token inválido na URL."}), 403
 
     client_token = request.headers.get("Client-Token")
@@ -66,6 +66,7 @@ def receber_mensagem(token):
         print(f"📥 Mensagem recebida de {numero} ({nome}): {mensagem}")
 
         if numero in BLOQUEAR_NUMEROS:
+            print(f"⛔ Número bloqueado: {numero}")
             return jsonify({"status": "bloqueado", "mensagem": "Número ignorado pelo sistema."})
 
         resposta = gerar_resposta_gpt(mensagem, nome)
@@ -83,6 +84,7 @@ def receber_mensagem(token):
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
+# === ENVIO CONDICIONAL PARA GRUPOS E INDIVIDUAL ===
 def enviar_resposta_via_zapi(telefone, mensagem, mensagem_original=""):
     headers = {"Content-Type": "application/json"}
 
@@ -116,6 +118,7 @@ def enviar_resposta_via_zapi(telefone, mensagem, mensagem_original=""):
     except Exception as e:
         print(f"❌ Erro ao enviar via Z-API: {repr(e)}")
 
+# === GPT-4 COM ESTILO DAYAN ===
 def gerar_resposta_gpt(pergunta, nome_cliente):
     saudacao = gerar_saudacao()
     introducao = (
@@ -124,7 +127,7 @@ def gerar_resposta_gpt(pergunta, nome_cliente):
         "📌 Pode me contar, de forma breve, o que está acontecendo ou qual é sua dúvida?\n"
     )
 
-    prompt = f'''
+    prompt = f"""
 Você é um assistente IA da Teixeira Brito Advogados.
 
 Estilo da resposta:
@@ -132,7 +135,7 @@ Estilo da resposta:
 - NÃO EXPLIQUE conceitos jurídicos (ex: não diga o que é holding, como funciona usucapião, etc.), mesmo que o cliente pergunte diretamente.
 - Sua função é acolher, investigar e encaminhar o cliente para o atendimento humano.
 - Use perguntas curtas e estratégicas para entender a demanda.
-- Nunca repita informações ou frases genéricas como “parece que você tem uma dúvida”.
+- Nunca repita informações ou frases genéricas como "parece que você tem uma dúvida".
 - Responda em no máximo 3 parágrafos objetivos.
 - Finalize sempre com:
 
@@ -141,7 +144,7 @@ Se não conseguir falar com o Dr. Dayan, entre em contato com o atendimento: {CO
 
 Mensagem recebida do cliente:
 {pergunta}
-'''
+"""
 
     response = openai.ChatCompletion.create(
         model="gpt-4",
@@ -152,15 +155,11 @@ Mensagem recebida do cliente:
     texto = response.choices[0].message["content"].strip()
     return f"{introducao}\n\n{texto}"
 
+# === CONSULTA HISTÓRICO ===
 @app.route("/conversas/<numero>", methods=["GET"])
 def mostrar_conversa(numero):
     return jsonify(CONVERSAS.get(numero, ["Sem histórico para este número."]))
 
 @app.route("/")
 def home():
-    return "🟢 Integração Whats TB ativa — Estilo Dayan com controle de grupo e Z-API"
-'''
-
-# Salvar o código no arquivo
-code_path.write_text(codigo_final.strip())
-code_path.name
+    return "🟢 Whats TB rodando com Estilo Dayan, controle de grupos e Z-API"
