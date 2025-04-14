@@ -22,26 +22,33 @@ LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 # === CONTROLES ===
 BLOQUEAR_NUMEROS = os.getenv("BLOQUEADOS", "").split(",")
 CONVERSAS = {}
-ATENDIMENTO_MANUAL = {}  # {"556299999999": "2024-04-14"}
+ATENDIMENTO_MANUAL = {}  # {"556299999999": "YYYY-MM-DD"}
 
 GATILHOS_RESPOSTA = [
-    "quero", "gostaria", "preciso", "tenho uma dúvida",
-    "como faço", "o que fazer", "qual o procedimento",
-    "poderia me orientar", "ajuda", "tem como", "posso"
+    "quero", "gostaria", "preciso", "tenho uma dúvida", "como faço",
+    "o que fazer", "qual o procedimento", "poderia me orientar",
+    "ajuda", "tem como", "posso", "é possível", "vocês fazem", "me explica"
 ]
+
+SAUDACOES = ["bom dia", "boa tarde", "boa noite", "oi", "olá"]
 
 # === FUNÇÕES ===
 def gerar_saudacao():
     hora = datetime.now().hour
     return "Bom dia" if hora < 12 else "Boa tarde" if hora < 18 else "Boa noite"
 
-def deve_responder(mensagem, numero):
-    if numero in BLOQUEAR_NUMEROS or "-group" in numero:
-        return False
-    if numero in ATENDIMENTO_MANUAL and ATENDIMENTO_MANUAL[numero] == str(date.today()):
-        print(f"⛔ {numero} está em atendimento manual hoje.")
-        return False
-    return any(g in mensagem.lower() for g in GATILHOS_RESPOSTA)
+def identificar_tipo_demanda(mensagem):
+    texto = mensagem.lower().strip()
+
+    if any(saud in texto for saud in SAUDACOES):
+        return "SAUDACAO"
+    if any(gatilho in texto for gatilho in GATILHOS_RESPOSTA):
+        return "DIRECIONAR"
+    return False
+
+def demanda_esta_clara(mensagem):
+    palavras_chave = ["abrir", "fazer", "realizar", "constituir", "iniciar", "resolver", "contrato", "holding", "inventário"]
+    return any(p in mensagem.lower() for p in palavras_chave) and len(mensagem.split()) >= 8
 
 def formata_tratamento(nome):
     return f"Sr(a). {nome.split()[0].capitalize()}" if nome else "Cliente"
@@ -53,9 +60,9 @@ def receber_mensagem(token):
         return jsonify({"erro": "Token inválido na URL."}), 403
 
     client_token = request.headers.get("Client-Token")
+    content_type = request.headers.get("Content-Type")
     if not client_token:
         client_token = EXPECTED_CLIENT_TOKEN
-    content_type = request.headers.get("Content-Type")
 
     if client_token != EXPECTED_CLIENT_TOKEN or content_type != "application/json":
         return jsonify({"erro": "Headers inválidos."}), 403
@@ -68,10 +75,34 @@ def receber_mensagem(token):
 
         print(f"📥 {numero} ({nome}): {mensagem}")
 
-        if not deve_responder(mensagem, numero):
-            return jsonify({"status": "ignorado"})
+        if numero in BLOQUEAR_NUMEROS or "-group" in numero:
+            return jsonify({"status": "ignorado", "motivo": "grupo ou bloqueado"})
 
-        resposta = gerar_resposta_gpt(mensagem, nome, numero)
+        if numero in ATENDIMENTO_MANUAL and ATENDIMENTO_MANUAL[numero] == str(date.today()):
+            return jsonify({"status": "ignorado", "motivo": "atendimento manual ativo"})
+
+        tipo = identificar_tipo_demanda(mensagem)
+        tratamento = formata_tratamento(nome)
+        saudacao = gerar_saudacao()
+
+        if tipo == "SAUDACAO":
+            resposta = f"{saudacao}, {tratamento}.\n\nEm que posso te ajudar?"
+        elif tipo == "DIRECIONAR":
+            if demanda_esta_clara(mensagem):
+                resposta = (
+                    f"{saudacao}, {tratamento}.\n\n"
+                    "Sua mensagem já traz as informações necessárias para iniciarmos o atendimento.\n\n"
+                    "Deseja:\n"
+                    f"📞 Falar com o Dr. Dayan: {CONTATO_DIRETO}\n"
+                    f"📅 Agendar um horário online: {LINK_CALENDLY}"
+                )
+            else:
+                resposta = (
+                    f"{saudacao}, {tratamento}.\n\n"
+                    "Recebi sua mensagem, mas para poder direcionar corretamente, poderia me dar mais detalhes sobre sua situação?"
+                )
+        else:
+            return jsonify({"status": "ignorado", "motivo": "sem gatilho"})
 
         if numero not in CONVERSAS:
             CONVERSAS[numero] = []
@@ -98,45 +129,9 @@ def enviar_resposta_via_zapi(telefone, mensagem):
         response = requests.post(url, json=payload, headers=headers)
         print(f"📤 Enviado para {telefone} ✅ Status: {response.status_code}")
     except Exception as e:
-        print(f"❌ Falha ao enviar via Z-API: {repr(e)}")
+        print(f"❌ Erro ao enviar via Z-API: {repr(e)}")
 
-# === GERADOR DE RESPOSTA CONCIERGE ===
-def gerar_resposta_gpt(mensagem, nome_cliente, numero):
-    saudacao = gerar_saudacao()
-    tratamento = formata_tratamento(nome_cliente)
-
-    prompt = f"""
-Você é um assistente jurídico estratégico da Teixeira Brito Advogados.
-
-Seu papel:
-- Ouvir o cliente com atenção
-- NÃO resolver juridicamente
-- NÃO explicar leis
-- Apenas acolher e perguntar se o cliente deseja:
-  - falar com Dr. Dayan diretamente
-  - ou agendar com a equipe
-
-Mensagem recebida:
-{mensagem}
-"""
-
-    introducao = (
-        f"{saudacao}, {tratamento}.\n\n"
-        "Recebi sua mensagem e quero entender melhor sua situação para direcionar da melhor forma.\n"
-        "📌 Deseja falar com o Dr. Dayan ou prefere que nossa equipe entre em contato?\n"
-        f"📞 {CONTATO_FIXO} | 📅 {LINK_CALENDLY}"
-    )
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.4
-    )
-
-    corpo = response.choices[0].message["content"].strip()
-    return f"{introducao}\n\n{corpo}"
-
-# === REGISTRA QUE VOCÊ ASSUMIU O ATENDIMENTO ===
+# === REGISTRO DE ATENDIMENTO MANUAL ===
 @app.route("/atendimento-manual", methods=["POST"])
 def registrar_atendimento_manual():
     data = request.json
@@ -149,8 +144,8 @@ def registrar_atendimento_manual():
 # === CONSULTA HISTÓRICO ===
 @app.route("/conversas/<numero>", methods=["GET"])
 def mostrar_conversa(numero):
-    return jsonify(CONVERSAS.get(numero, ["Sem histórico para este número."]))
+    return jsonify(CONVERSAS.get(numero, ["Sem histórico."]))
 
 @app.route("/")
 def home():
-    return "🟢 Whats TB rodando — Concierge Jurídico com Estilo Dayan"
+    return "🟢 Whats TB — Concierge Inteligente com Direcionamento Estratégico"
