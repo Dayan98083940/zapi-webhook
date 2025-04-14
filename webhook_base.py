@@ -19,10 +19,10 @@ CONTATO_DIRETO = "+55(62)99808-3940"
 CONTATO_FIXO = "(62) 3922-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
-# === CONTROLES ===
+# === CONTROLE ===
 BLOQUEAR_NUMEROS = os.getenv("BLOQUEADOS", "").split(",")
 CONVERSAS = {}
-ATENDIMENTO_MANUAL = {}  # {"556299999999": "YYYY-MM-DD"}
+ATENDIMENTO_MANUAL = {}
 
 GATILHOS_RESPOSTA = [
     "quero", "gostaria", "preciso", "tenho uma dúvida", "como faço",
@@ -32,14 +32,14 @@ GATILHOS_RESPOSTA = [
 
 SAUDACOES = ["bom dia", "boa tarde", "boa noite", "oi", "olá"]
 
-# === FUNÇÕES ===
 def gerar_saudacao():
     hora = datetime.now().hour
     return "Bom dia" if hora < 12 else "Boa tarde" if hora < 18 else "Boa noite"
 
 def identificar_tipo_demanda(mensagem):
     texto = mensagem.lower().strip()
-
+    if not texto:
+        return False
     if any(saud in texto for saud in SAUDACOES):
         return "SAUDACAO"
     if any(gatilho in texto for gatilho in GATILHOS_RESPOSTA):
@@ -53,7 +53,6 @@ def demanda_esta_clara(mensagem):
 def formata_tratamento(nome):
     return f"Sr(a). {nome.split()[0].capitalize()}" if nome else "Cliente"
 
-# === WEBHOOK PRINCIPAL ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
@@ -72,6 +71,10 @@ def receber_mensagem(token):
         mensagem = data.get("message", "").strip()
         numero = data.get("phone", "").strip()
         nome = data.get("name", "") or "Cliente"
+
+        if not mensagem:
+            print(f"📥 Mensagem vazia recebida de {numero} — ignorada.")
+            return jsonify({"status": "ignorado", "motivo": "mensagem vazia"})
 
         print(f"📥 {numero} ({nome}): {mensagem}")
 
@@ -115,7 +118,6 @@ def receber_mensagem(token):
     except Exception as e:
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === ENVIO VIA Z-API ===
 def enviar_resposta_via_zapi(telefone, mensagem):
     if not telefone or "-group" in telefone or not mensagem.strip():
         return
@@ -131,7 +133,6 @@ def enviar_resposta_via_zapi(telefone, mensagem):
     except Exception as e:
         print(f"❌ Erro ao enviar via Z-API: {repr(e)}")
 
-# === REGISTRO DE ATENDIMENTO MANUAL ===
 @app.route("/atendimento-manual", methods=["POST"])
 def registrar_atendimento_manual():
     data = request.json
@@ -141,11 +142,10 @@ def registrar_atendimento_manual():
         return jsonify({"status": "registrado", "numero": numero})
     return jsonify({"erro": "Número inválido."}), 400
 
-# === CONSULTA HISTÓRICO ===
 @app.route("/conversas/<numero>", methods=["GET"])
 def mostrar_conversa(numero):
     return jsonify(CONVERSAS.get(numero, ["Sem histórico."]))
 
 @app.route("/")
 def home():
-    return "🟢 Whats TB — Concierge Inteligente com Direcionamento Estratégico"
+    return "🟢 Whats TB — Concierge Inteligente com Filtro de Mensagem Vazia"
