@@ -26,7 +26,6 @@ ZAPI_TOKEN = "6148D6FDA5C0D66E63947D5B"
 BLOQUEAR_NUMEROS = os.getenv("BLOQUEADOS", "").split(",")
 CONVERSAS = {}
 
-# === FUNÇÕES AUXILIARES ===
 def gerar_saudacao():
     hora = datetime.now().hour
     if hora < 12:
@@ -36,7 +35,6 @@ def gerar_saudacao():
     else:
         return "Boa noite"
 
-# === ROTAS PRINCIPAIS ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
@@ -84,33 +82,32 @@ def receber_mensagem(token):
         print(f"❌ Erro ao processar mensagem: {repr(e)}")
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
-# === ENVIO CONDICIONAL PARA GRUPOS E INDIVIDUAL ===
 def enviar_resposta_via_zapi(telefone, mensagem, mensagem_original=""):
-    headers = {"Content-Type": "application/json"}
-
-    if "-group" in telefone:
-        if "dayan" in mensagem_original.lower():
-            resposta_grupo = (
-                "Olá! Para assuntos jurídicos, por favor, me chame no privado para que eu possa te orientar com segurança. 📲"
-            )
-            payload = {"phone": telefone, "message": resposta_grupo}
-            url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
-            try:
-                response = requests.post(url, json=payload, headers=headers)
-                print(f"📤 Mensagem enviada para grupo {telefone}.")
-                print(f"🧾 Resposta da Z-API: {response.status_code} - {response.text}")
-            except Exception as e:
-                print(f"❌ Erro ao responder grupo: {repr(e)}")
-        else:
-            print(f"👥 Grupo detectado, sem menção a Dayan — ignorando.")
-        return
-
     if not telefone or not mensagem.strip():
         print(f"⛔ Ignorado: número inválido ou mensagem vazia → {telefone}")
         return
 
-    payload = {"phone": telefone, "message": mensagem}
+    # Mensagem para grupo: só responde se mencionar "dayan"
+    if "-group" in telefone:
+        if "dayan" in mensagem_original.lower():
+            mensagem = (
+                "Olá! Para assuntos jurídicos, por favor, me chame no privado para que eu possa te orientar com segurança. 📲"
+            )
+        else:
+            print(f"👥 Grupo detectado sem menção a Dayan — ignorado.")
+            return
+
     url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
+    payload = {
+        "phone": telefone,
+        "message": mensagem
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Client-token": "F124e80fa9ba94101a6eb723b5a20d2b3S"
+    }
+
     try:
         response = requests.post(url, json=payload, headers=headers)
         print(f"📤 Mensagem enviada para {telefone} via Z-API.")
@@ -118,7 +115,6 @@ def enviar_resposta_via_zapi(telefone, mensagem, mensagem_original=""):
     except Exception as e:
         print(f"❌ Erro ao enviar via Z-API: {repr(e)}")
 
-# === GPT-4 COM ESTILO DAYAN ===
 def gerar_resposta_gpt(pergunta, nome_cliente):
     saudacao = gerar_saudacao()
     introducao = (
@@ -155,11 +151,10 @@ Mensagem recebida do cliente:
     texto = response.choices[0].message["content"].strip()
     return f"{introducao}\n\n{texto}"
 
-# === CONSULTA HISTÓRICO ===
 @app.route("/conversas/<numero>", methods=["GET"])
 def mostrar_conversa(numero):
     return jsonify(CONVERSAS.get(numero, ["Sem histórico para este número."]))
 
 @app.route("/")
 def home():
-    return "🟢 Whats TB rodando com Estilo Dayan, controle de grupos e Z-API"
+    return "🟢 Whats TB ativo com Z-API, GPT-4 e Estilo Dayan"
