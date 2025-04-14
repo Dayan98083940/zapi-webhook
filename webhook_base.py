@@ -25,66 +25,74 @@ ATENDIMENTO_MANUAL = {}
 GATILHOS_RESPOSTA = [
     "quero", "gostaria", "preciso", "dúvida", "processo",
     "como faço", "o que fazer", "procedimento",
-    "orientação", "ajuda", "tem como", "posso", "informação"
+    "orientação", "ajuda", "tem como", "posso", "informação", "reunião", "agendamento"
 ]
 
 SAUDACOES = ["bom dia", "boa tarde", "boa noite"]
 
+# === FUNÇÕES DE APOIO ===
 def gerar_saudacao():
     hora = datetime.now().hour
-    return "Bom dia" if hora < 12 else "Boa tarde" if hora < 18 else "Boa noite"
+    if hora < 12:
+        return "Bom dia"
+    elif hora < 18:
+        return "Boa tarde"
+    else:
+        return "Boa noite"
+
+def formata_tratamento(nome):
+    nome = nome.lower()
+    if "advogado" in nome or "advogada" in nome:
+        return f"Dr(a). {nome.split()[0].capitalize()}"
+    return f"Sr(a). {nome.split()[0].capitalize()}" if nome else "Cliente"
 
 def deve_responder(mensagem, numero):
     if numero in BLOQUEAR_NUMEROS or "-group" in numero:
         return False
     if numero in ATENDIMENTO_MANUAL and ATENDIMENTO_MANUAL[numero] == str(date.today()):
-        print(f"⛔ Atendimento manual ativo hoje para: {numero}")
+        print(f"⛔ Atendimento manual ativo para {numero}")
         return False
-    mensagem = mensagem.lower()
-    return any(g in mensagem for g in GATILHOS_RESPOSTA) or mensagem in SAUDACOES
+    msg_lower = mensagem.lower()
+    return any(g in msg_lower for g in GATILHOS_RESPOSTA + SAUDACOES)
 
-def formata_tratamento(nome):
-    if "advogado" in nome.lower() or "advogada" in nome.lower():
-        return f"Dr(a). {nome.split()[0].capitalize()}"
-    return f"Sr(a). {nome.split()[0].capitalize()}" if nome else "Cliente"
-
+# === WEBHOOK PRINCIPAL ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
     if token != WEBHOOK_URL_TOKEN:
+        print(f"❌ Token inválido recebido: {token}")
         return jsonify({"erro": "Token inválido na URL."}), 403
 
     client_token = request.headers.get("Client-Token")
     content_type = request.headers.get("Content-Type")
+    print(f"🔍 Recebido — Client-Token: {client_token}, Content-Type: {content_type}")
 
     if client_token != EXPECTED_CLIENT_TOKEN or content_type != "application/json":
+        print("❌ Headers inválidos.")
         return jsonify({"erro": "Headers inválidos."}), 403
 
-    try:
-        data = request.json
-        mensagem = data.get("message", "").strip()
-        numero = data.get("phone", "").strip()
-        nome = data.get("name", "").strip() or "Cliente"
+    data = request.json
+    mensagem = data.get("message", "").strip()
+    numero = data.get("phone", "").strip()
+    nome = data.get("name", "").strip() or "Cliente"
 
-        if not mensagem:
-            print(f"📥 Mensagem vazia recebida de {numero} — ignorada.")
-            return jsonify({"status": "ignorado", "motivo": "mensagem vazia"})
+    if not mensagem:
+        print(f"📥 Mensagem vazia recebida de {numero} — ignorada.")
+        return jsonify({"status": "ignorado"})
 
-        if not deve_responder(mensagem, numero):
-            print(f"📥 Sem gatilho na mensagem de {numero}: {mensagem}")
-            return jsonify({"status": "ignorado", "motivo": "sem gatilho"})
+    if not deve_responder(mensagem, numero):
+        print(f"📥 Mensagem sem gatilho recebida de {numero}: {mensagem}")
+        return jsonify({"status": "ignorado"})
 
-        resposta = gerar_resposta_gpt(mensagem, nome, numero)
-        CONVERSAS.setdefault(numero, []).extend([f"Cliente: {mensagem}", f"Assistente: {resposta}"])
-        enviar_resposta_via_zapi(numero, resposta)
+    resposta = gerar_resposta_gpt(mensagem, nome)
+    CONVERSAS.setdefault(numero, []).extend([f"Cliente: {mensagem}", f"Assistente: {resposta}"])
 
-        return jsonify({"status": "respondido", "para": numero, "mensagem": resposta})
+    enviar_resposta_via_zapi(numero, resposta)
+    return jsonify({"status": "respondido", "para": numero, "resposta": resposta})
 
-    except Exception as e:
-        return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
-
+# === ENVIO Z-API ===
 def enviar_resposta_via_zapi(telefone, mensagem):
-    if "-group" in telefone or not telefone or not mensagem.strip():
-        print(f"🚫 Mensagem bloqueada (grupo ou vazia) para {telefone}.")
+    if "-group" in telefone or not mensagem.strip():
+        print(f"🚫 Mensagem bloqueada para grupo ou vazia: {telefone}")
         return
 
     url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
@@ -95,58 +103,67 @@ def enviar_resposta_via_zapi(telefone, mensagem):
     payload = {"phone": telefone, "message": mensagem}
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Enviado para {telefone}, status: {response.status_code}, retorno: {response.text}")
+        print(f"📤 Enviado para {telefone}, Status: {response.status_code}, Retorno: {response.text}")
     except Exception as e:
-        print(f"❌ Falha ao enviar via Z-API: {repr(e)}")
+        print(f"❌ Falha ao enviar via Z-API: {e}")
 
-def gerar_resposta_gpt(mensagem, nome_cliente, numero):
+# === GERADOR DE RESPOSTA (GPT-4 Turbo) ===
+def gerar_resposta_gpt(mensagem, nome_cliente):
     saudacao = gerar_saudacao()
     tratamento = formata_tratamento(nome_cliente)
 
-    if mensagem.lower() in SAUDACOES:
-        return f"{saudacao}, {tratamento}! Como posso ajudar hoje?\n\n📞 {CONTATO_FIXO} | 📅 {LINK_CALENDLY}"
-
     fora_do_horario = datetime.now().hour < 8 or datetime.now().hour >= 18
+
+    if mensagem.lower() in SAUDACOES:
+        return (f"{saudacao}, {tratamento}! Como posso auxiliar hoje?\n\n"
+                f"Desde já, obrigado pelo contato! 📞 {CONTATO_FIXO} | 📅 {LINK_CALENDLY}")
+
     if fora_do_horario:
-        return f"{saudacao}, {tratamento}. Nosso atendimento é das 08h às 18h. Para urgências, ligue para {CONTATO_FIXO} ou agende aqui: {LINK_CALENDLY}"
+        return (f"{saudacao}, {tratamento}! Nosso atendimento é das 08h às 18h. "
+                f"Por favor, agende seu atendimento pelo link: {LINK_CALENDLY}. "
+                "Agradecemos a compreensão!")
 
     prompt = f"""
-    Você é assistente da Teixeira Brito Advogados. Sua tarefa é apenas:
-    - Identificar rapidamente o que o cliente precisa.
-    - Perguntar objetivamente se ele prefere atendimento pelo Dr. Dayan ou pela equipe geral.
-    - Não dê respostas jurídicas nem explique leis.
+    Você é um assistente jurídico educado, cordial e objetivo do escritório Teixeira Brito Advogados. 
+    Seu objetivo é identificar rapidamente a necessidade do cliente e oferecer direcionamento gentil e eficiente sem detalhar juridicamente.
 
-    Mensagem recebida: {mensagem}
+    Mensagem recebida: "{mensagem}"
+
+    Finalize cordialmente agradecendo e informando que pode ligar para o Dr. Dayan em {CONTATO_DIRETO} ou agendar pelo link {LINK_CALENDLY}.
     """
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4-turbo",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.4
+            temperature=0.3,
+            max_tokens=300
         )
         corpo = response.choices[0].message["content"].strip()
     except Exception as e:
-        corpo = "Não consegui gerar uma resposta neste momento. Por favor, ligue diretamente para nosso escritório."
+        print(f"Erro OpenAI: {e}")
+        corpo = ("No momento não conseguimos gerar uma resposta automática. "
+                 "Entre em contato diretamente pelo telefone.")
 
-    return f"{saudacao}, {tratamento}.\n\n{corpo}\n\n📞 {CONTATO_FIXO} | 📅 {LINK_CALENDLY}"
+    return f"{saudacao}, {tratamento}.\n\n{corpo}\n\nObrigado pelo contato! 📞 {CONTATO_FIXO} | 📅 {LINK_CALENDLY}"
 
+# === ROTAS AUXILIARES ===
 @app.route("/atendimento-manual", methods=["POST"])
-def registrar_atendimento_manual():
-    data = request.json
-    numero = data.get("numero", "").strip()
+def atendimento_manual():
+    numero = request.json.get("numero", "").strip()
     if numero:
         ATENDIMENTO_MANUAL[numero] = str(date.today())
         return jsonify({"status": "registrado", "numero": numero})
     return jsonify({"erro": "Número inválido."}), 400
 
 @app.route("/conversas/<numero>", methods=["GET"])
-def mostrar_conversa(numero):
+def conversa(numero):
     return jsonify(CONVERSAS.get(numero, ["Sem histórico."]))
 
 @app.route("/")
 def home():
-    return "🟢 Whats TB rodando — Atendimento automático Teixeira Brito"
+    return "🟢 Whats TB rodando — Atendimento Automatizado Teixeira Brito Advogados"
 
+# === RUN LOCAL ===
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=10000)
