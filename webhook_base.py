@@ -15,10 +15,14 @@ ZAPI_INSTANCE_URL = "https://api.z-api.io/instances/3DF715E26F0310B41D118E66062C
 ZAPI_TOKEN = "6148D6FDA5C0D66E63947D5B"
 
 CONTATO_DIRETO = "+55(62)99808-3940"
+CONTATO_FORMATADO = "5562998083940"  # Número formatado para Z-API
 CONTATO_FIXO = "(62) 3922-3940"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
-BLOQUEAR_NUMEROS = os.getenv("BLOQUEADOS", "").split(",")
+# Tratamento adequado para lista de bloqueados
+BLOQUEAR_NUMEROS_ENV = os.getenv("BLOQUEADOS", "")
+BLOQUEAR_NUMEROS = [num for num in BLOQUEAR_NUMEROS_ENV.split(",") if num.strip()]
+
 CONVERSAS = {}
 ATENDIMENTO_MANUAL = {}
 
@@ -58,6 +62,9 @@ def deve_responder(mensagem, numero):
 # === WEBHOOK PRINCIPAL ===
 @app.route("/webhook/<token>/receive", methods=["POST"])
 def receber_mensagem(token):
+    print(f"Webhook acionado com token: {token}")
+    print(f"Headers recebidos: {dict(request.headers)}")
+    
     if token != WEBHOOK_URL_TOKEN:
         print(f"❌ Token inválido recebido: {token}")
         return jsonify({"erro": "Token inválido na URL."}), 403
@@ -70,24 +77,30 @@ def receber_mensagem(token):
         print("❌ Headers inválidos.")
         return jsonify({"erro": "Headers inválidos."}), 403
 
-    data = request.json
-    mensagem = data.get("message", "").strip()
-    numero = data.get("phone", "").strip()
-    nome = data.get("name", "").strip() or "Cliente"
+    try:
+        data = request.json
+        print(f"Dados recebidos: {data}")
+        
+        mensagem = data.get("message", "").strip()
+        numero = data.get("phone", "").strip()
+        nome = data.get("name", "").strip() or "Cliente"
 
-    if not mensagem:
-        print(f"📥 Mensagem vazia recebida de {numero} — ignorada.")
-        return jsonify({"status": "ignorado"})
+        if not mensagem:
+            print(f"📥 Mensagem vazia recebida de {numero} — ignorada.")
+            return jsonify({"status": "ignorado"})
 
-    if not deve_responder(mensagem, numero):
-        print(f"📥 Mensagem sem gatilho recebida de {numero}: {mensagem}")
-        return jsonify({"status": "ignorado"})
+        if not deve_responder(mensagem, numero):
+            print(f"📥 Mensagem sem gatilho recebida de {numero}: {mensagem}")
+            return jsonify({"status": "ignorado"})
 
-    resposta = gerar_resposta_gpt(mensagem, nome)
-    CONVERSAS.setdefault(numero, []).extend([f"Cliente: {mensagem}", f"Assistente: {resposta}"])
+        resposta = gerar_resposta_gpt(mensagem, nome)
+        CONVERSAS.setdefault(numero, []).extend([f"Cliente: {mensagem}", f"Assistente: {resposta}"])
 
-    enviar_resposta_via_zapi(numero, resposta)
-    return jsonify({"status": "respondido", "para": numero, "resposta": resposta})
+        enviar_resposta_via_zapi(numero, resposta)
+        return jsonify({"status": "respondido", "para": numero, "resposta": resposta})
+    except Exception as e:
+        print(f"❌ Erro ao processar requisição: {e}")
+        return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
 # === ENVIO Z-API ===
 def enviar_resposta_via_zapi(telefone, mensagem):
@@ -95,15 +108,27 @@ def enviar_resposta_via_zapi(telefone, mensagem):
         print(f"🚫 Mensagem bloqueada para grupo ou vazia: {telefone}")
         return
 
+    # Formatação do número de telefone (se necessário)
+    telefone_formatado = telefone
+    if not telefone.startswith("55") and telefone.startswith("+"):
+        # Remove caracteres não numéricos
+        telefone_formatado = ''.join(filter(str.isdigit, telefone))
+
     url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
     headers = {
         "Content-Type": "application/json",
         "Client-token": EXPECTED_CLIENT_TOKEN
     }
-    payload = {"phone": telefone, "message": mensagem}
+    payload = {"phone": telefone_formatado, "message": mensagem}
+    
+    print(f"Payload enviado à Z-API: {payload}")
+    
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Enviado para {telefone}, Status: {response.status_code}, Retorno: {response.text}")
+        if response.status_code >= 200 and response.status_code < 300:
+            print(f"📤 Enviado com sucesso para {telefone}")
+        else:
+            print(f"❌ Erro ao enviar: Status {response.status_code}, Resposta: {response.text}")
     except Exception as e:
         print(f"❌ Falha ao enviar via Z-API: {e}")
 
@@ -133,17 +158,29 @@ def gerar_resposta_gpt(mensagem, nome_cliente):
     """
 
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4-turbo",
+        # Versão atualizada da chamada da API OpenAI
+        response = openai.chat.completions.create(
+            model="gpt-4-0125-preview",  # Nome correto do modelo
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=300
         )
-        corpo = response.choices[0].message["content"].strip()
+        corpo = response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Erro OpenAI: {e}")
-        corpo = ("No momento não conseguimos gerar uma resposta automática. "
-                 "Entre em contato diretamente pelo telefone.")
+        # Tentar método antigo caso o novo falhe
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=300
+            )
+            corpo = response.choices[0].message["content"].strip()
+        except Exception as e2:
+            print(f"Erro OpenAI (método antigo): {e2}")
+            corpo = ("No momento não conseguimos gerar uma resposta automática. "
+                    "Entre em contato diretamente pelo telefone.")
 
     return f"{saudacao}, {tratamento}.\n\n{corpo}\n\nObrigado pelo contato! 📞 {CONTATO_FIXO} | 📅 {LINK_CALENDLY}"
 
@@ -159,6 +196,23 @@ def atendimento_manual():
 @app.route("/conversas/<numero>", methods=["GET"])
 def conversa(numero):
     return jsonify(CONVERSAS.get(numero, ["Sem histórico."]))
+
+@app.route("/debug", methods=["GET"])
+def debug_info():
+    # Não retorne chaves sensíveis em produção!
+    return jsonify({
+        "configurações": {
+            "webhook_token_definido": bool(WEBHOOK_URL_TOKEN),
+            "client_token_definido": bool(EXPECTED_CLIENT_TOKEN),
+            "openai_key_definida": bool(openai.api_key),
+            "zapi_configurada": bool(ZAPI_INSTANCE_URL and ZAPI_TOKEN),
+        },
+        "estatísticas": {
+            "conversas_ativas": len(CONVERSAS),
+            "atendimentos_manuais": len(ATENDIMENTO_MANUAL),
+            "números_bloqueados": BLOQUEAR_NUMEROS
+        }
+    })
 
 @app.route("/")
 def home():
