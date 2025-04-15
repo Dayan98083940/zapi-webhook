@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import openai
 import requests
-from datetime import datetime, date
+from datetime import datetime
 import re
 
 app = Flask(__name__)
@@ -16,21 +16,15 @@ ZAPI_TOKEN = "6148D6FDA5C0D66E63947D5B"
 CLIENT_TOKEN = os.getenv("CLIENT_TOKEN", "")
 
 # Informações de contato
-CONTATO_DIRETO = "+55(62)99808-3940"
-CONTATO_FIXO = "(62) 3922-3940"
+BACKOFFICE_WHATSAPP = "+55(62)99981-2069"
+BACKOFFICE_FIXO = "(62) 3922-3940"
+BACKOFFICE_EMAIL = "contato@advgoias.com.br"
 LINK_CALENDLY = "https://calendly.com/dayan-advgoias"
 
 # Armazenamento de conversa e estados
 CONVERSAS = {}
-ATENDIMENTO_MANUAL = {}
-ESTADO_CONVERSA = {}
 NOMES_CLIENTES = {}
-
-# Estados da conversa
-ESTADO_INICIAL = 0
-ESTADO_ESPERA_NOME = 1
-ESTADO_ESPERA_DUVIDA = 2
-ESTADO_ATENDIMENTO = 3
+ULTIMA_MENSAGEM = {}
 
 # === FUNÇÕES DE APOIO ===
 def gerar_saudacao():
@@ -48,7 +42,9 @@ def extrair_nome(mensagem):
         match = re.match(padrao, mensagem, re.I)
         if match:
             return match.group(1).strip().title()
-    return mensagem.title()
+    if len(mensagem.split()) <= 3 and mensagem.isalpha():
+        return mensagem.title()
+    return None
 
 def extrair_mensagem(data):
     try:
@@ -60,19 +56,20 @@ def extrair_mensagem(data):
             caption = data["document"].get("caption", "").strip()
             filename = data["document"].get("filename", "").strip()
             return f"[Documento: {filename}] {caption}"
-        if "message" in data:
-            return data["message"].get("text", "").strip() if isinstance(data["message"], dict) else str(data["message"]).strip()
         return ""
     except Exception as e:
         print(f"Erro ao extrair mensagem: {e}")
         return ""
 
 def e_grupo(numero):
-    return "-group" in numero or "g.us" in numero or numero.startswith("120363")
+    return "-group" in numero or "g.us" in numero
 
 def deve_responder(mensagem, numero):
-    if e_grupo(numero) or numero in ATENDIMENTO_MANUAL or not mensagem.strip():
+    if e_grupo(numero) or not mensagem.strip():
         return False
+    if ULTIMA_MENSAGEM.get(numero) == mensagem:
+        return False
+    ULTIMA_MENSAGEM[numero] = mensagem
     return True
 
 # === ROTAS PRINCIPAIS ===
@@ -88,38 +85,18 @@ def receber_mensagem(token):
     if not deve_responder(mensagem, numero):
         return jsonify({"status": "ignorado"})
 
-    estado_atual = ESTADO_CONVERSA.get(numero, ESTADO_INICIAL)
-
-    if estado_atual == ESTADO_INICIAL:
-        ESTADO_CONVERSA[numero] = ESTADO_ESPERA_NOME
-        resposta = f"{gerar_saudacao()}! Poderia me dizer seu nome?"
-
-    elif estado_atual == ESTADO_ESPERA_NOME:
+    if numero not in NOMES_CLIENTES:
         nome_cliente = extrair_nome(mensagem)
-        NOMES_CLIENTES[numero] = nome_cliente
-        ESTADO_CONVERSA[numero] = ESTADO_ESPERA_DUVIDA
-        resposta = f"Obrigado, {nome_cliente}! Como posso te ajudar hoje?"
-
+        if nome_cliente:
+            NOMES_CLIENTES[numero] = nome_cliente
+            resposta = f"Obrigado, {nome_cliente}! Encaminhamos sua mensagem para nossa equipe que entrará em contato em breve. Se preferir, entre em contato diretamente pelo telefone {BACKOFFICE_FIXO}, WhatsApp {BACKOFFICE_WHATSAPP} ou pelo e-mail {BACKOFFICE_EMAIL}."
+        else:
+            resposta = f"{gerar_saudacao()}! Poderia me informar seu nome para que nossa equipe entre em contato com você?"
     else:
-        resposta = analisar_duvida_cliente(mensagem, NOMES_CLIENTES.get(numero, "Cliente"))
+        resposta = f"{gerar_saudacao()}, {NOMES_CLIENTES[numero]}! Recebemos sua mensagem e nossa equipe entrará em contato. Caso prefira, pode nos contatar diretamente pelo telefone {BACKOFFICE_FIXO}, WhatsApp {BACKOFFICE_WHATSAPP} ou e-mail {BACKOFFICE_EMAIL}."
 
     enviar_resposta_via_zapi(numero, resposta)
     return jsonify({"status": "respondido"})
-
-def analisar_duvida_cliente(mensagem, nome_cliente):
-    prompt = f"""Você é um assistente jurídico educado.
-Cliente: {nome_cliente}
-Mensagem: {mensagem}
-Faça perguntas adicionais se necessário para entender melhor a necessidade do cliente e dê orientações gerais. Sugira contato ou agendamento para casos específicos."""
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3, max_tokens=400
-    )
-
-    corpo = response.choices[0].message["content"].strip()
-    return f"{corpo}\n\nAgende: {LINK_CALENDLY}\nTel: {CONTATO_FIXO} | Cel: {CONTATO_DIRETO}"
 
 def enviar_resposta_via_zapi(telefone, mensagem):
     url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
