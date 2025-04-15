@@ -115,24 +115,29 @@ def enviar_resposta_via_zapi(telefone, mensagem):
         telefone_formatado = ''.join(filter(str.isdigit, telefone))
 
     url = f"{ZAPI_INSTANCE_URL}/token/{ZAPI_TOKEN}/send-text"
+    
+    # Ajuste correto dos headers conforme especificação da Z-API
     headers = {
         "Content-Type": "application/json",
         "Client-token": EXPECTED_CLIENT_TOKEN
     }
+    
     payload = {"phone": telefone_formatado, "message": mensagem}
     
-    print(f"Payload enviado à Z-API: {payload}")
+    print(f"Enviando para Z-API - URL: {url}")
+    print(f"Headers: {headers}")
+    print(f"Payload: {payload}")
     
     try:
         response = requests.post(url, json=payload, headers=headers)
         if response.status_code >= 200 and response.status_code < 300:
-            print(f"📤 Enviado com sucesso para {telefone}")
+            print(f"📤 Enviado com sucesso para {telefone}, Status: {response.status_code}")
         else:
             print(f"❌ Erro ao enviar: Status {response.status_code}, Resposta: {response.text}")
     except Exception as e:
         print(f"❌ Falha ao enviar via Z-API: {e}")
 
-# === GERADOR DE RESPOSTA (GPT-4 Turbo) ===
+# === GERADOR DE RESPOSTA (GPT-4) ===
 def gerar_resposta_gpt(mensagem, nome_cliente):
     saudacao = gerar_saudacao()
     tratamento = formata_tratamento(nome_cliente)
@@ -158,29 +163,28 @@ def gerar_resposta_gpt(mensagem, nome_cliente):
     """
 
     try:
-        # Versão atualizada da chamada da API OpenAI
-        response = openai.chat.completions.create(
-            model="gpt-4-0125-preview",  # Nome correto do modelo
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=300
-        )
-        corpo = response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Erro OpenAI: {e}")
-        # Tentar método antigo caso o novo falhe
+        # Tentar primeiro com a API mais recente
         try:
+            response = openai.chat.completions.create(
+                model="gpt-4-0125-preview",  # Nome correto do modelo mais recente
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=300
+            )
+            corpo = response.choices[0].message.content.strip()
+        except AttributeError:
+            # Fallback para o método antigo se o novo não estiver disponível
             response = openai.ChatCompletion.create(
-                model="gpt-4-turbo",
+                model="gpt-4",  # Modelo padrão caso gpt-4-turbo não esteja disponível
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=300
             )
             corpo = response.choices[0].message["content"].strip()
-        except Exception as e2:
-            print(f"Erro OpenAI (método antigo): {e2}")
-            corpo = ("No momento não conseguimos gerar uma resposta automática. "
-                    "Entre em contato diretamente pelo telefone.")
+    except Exception as e:
+        print(f"Erro OpenAI: {e}")
+        corpo = ("No momento não conseguimos gerar uma resposta automática. "
+                 "Entre em contato diretamente pelo telefone.")
 
     return f"{saudacao}, {tratamento}.\n\n{corpo}\n\nObrigado pelo contato! 📞 {CONTATO_FIXO} | 📅 {LINK_CALENDLY}"
 
@@ -201,6 +205,8 @@ def conversa(numero):
 def debug_info():
     # Não retorne chaves sensíveis em produção!
     return jsonify({
+        "status": "online",
+        "timestamp": datetime.now().isoformat(),
         "configurações": {
             "webhook_token_definido": bool(WEBHOOK_URL_TOKEN),
             "client_token_definido": bool(EXPECTED_CLIENT_TOKEN),
@@ -220,4 +226,10 @@ def home():
 
 # === RUN LOCAL ===
 if __name__ == "__main__":
+    # Verifique configurações ao iniciar
+    print("=== INICIANDO SERVIDOR ===")
+    print(f"OpenAI API Key: {'Configurada' if openai.api_key else 'NÃO CONFIGURADA'}")
+    print(f"Webhook Token: {'Configurado' if WEBHOOK_URL_TOKEN else 'NÃO CONFIGURADO'}")
+    print(f"Client Token: {'Configurado' if EXPECTED_CLIENT_TOKEN else 'NÃO CONFIGURADO'}")
+    print(f"Números bloqueados: {len(BLOQUEAR_NUMEROS)}")
     app.run(host='0.0.0.0', port=10000)
