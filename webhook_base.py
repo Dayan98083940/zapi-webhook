@@ -65,25 +65,43 @@ def receber_mensagem(token):
     print(f"Webhook acionado com token: {token}")
     print(f"Headers recebidos: {dict(request.headers)}")
     
-    if token != WEBHOOK_URL_TOKEN:
-        print(f"❌ Token inválido recebido: {token}")
+    if token != ZAPI_TOKEN:
+        print(f"❌ Token inválido na URL: {token} (esperado: {ZAPI_TOKEN})")
         return jsonify({"erro": "Token inválido na URL."}), 403
 
-    client_token = request.headers.get("Client-Token")
+    # Verificar o token nos headers - a Z-API envia como Z-Api-Token, não Client-Token
+    z_api_token = request.headers.get("Z-Api-Token")
     content_type = request.headers.get("Content-Type")
-    print(f"🔍 Recebido — Client-Token: {client_token}, Content-Type: {content_type}")
+    print(f"🔍 Recebido — Z-Api-Token: {z_api_token}, Content-Type: {content_type}")
 
-    if client_token != EXPECTED_CLIENT_TOKEN or content_type != "application/json":
-        print("❌ Headers inválidos.")
+    if z_api_token != ZAPI_TOKEN or content_type != "application/json":
+        print(f"❌ Headers inválidos. Z-Api-Token recebido: {z_api_token}, esperado: {ZAPI_TOKEN}")
         return jsonify({"erro": "Headers inválidos."}), 403
 
     try:
         data = request.json
-        print(f"Dados recebidos: {data}")
+        print(f"JSON recebido da Z-API: {data}")
         
-        mensagem = data.get("message", "").strip()
-        numero = data.get("phone", "").strip()
-        nome = data.get("name", "").strip() or "Cliente"
+        # Extrair os dados conforme a estrutura da Z-API
+        try:
+            if "message" in data and isinstance(data["message"], dict):
+                mensagem = data["message"].get("text", "").strip()
+            else:
+                mensagem = data.get("message", "").strip()
+                
+            if "sender" in data and isinstance(data["sender"], dict):
+                numero = data["sender"].get("phone", "").strip()
+                nome = data["sender"].get("name", "").strip() or "Cliente"
+            else:
+                numero = data.get("phone", "").strip()
+                nome = data.get("name", "").strip() or "Cliente"
+        except Exception as e:
+            print(f"❌ Erro ao extrair dados do JSON: {e}")
+            mensagem = ""
+            numero = ""
+            nome = "Cliente"
+
+        print(f"📥 Mensagem extraída: '{mensagem}', Número: '{numero}', Nome: '{nome}'")
 
         if not mensagem:
             print(f"📥 Mensagem vazia recebida de {numero} — ignorada.")
@@ -224,6 +242,28 @@ def debug_info():
 def home():
     return "🟢 Whats TB rodando — Atendimento Automatizado Teixeira Brito Advogados"
 
+# === Rota para testes (apenas em desenvolvimento) ===
+@app.route("/test", methods=["POST"])
+def test_endpoint():
+    try:
+        data = request.json
+        print(f"Dados de teste recebidos: {data}")
+        
+        mensagem = data.get("message", "Olá, preciso de uma informação.")
+        numero = data.get("phone", "5562998083940")
+        nome = data.get("name", "Cliente Teste")
+        
+        resposta = gerar_resposta_gpt(mensagem, nome)
+        print(f"Resposta gerada: {resposta}")
+        
+        return jsonify({
+            "status": "teste_ok",
+            "mensagem_recebida": mensagem,
+            "resposta_gerada": resposta
+        })
+    except Exception as e:
+        return jsonify({"erro": str(e)})
+
 # === RUN LOCAL ===
 if __name__ == "__main__":
     # Verifique configurações ao iniciar
@@ -232,4 +272,5 @@ if __name__ == "__main__":
     print(f"Webhook Token: {'Configurado' if WEBHOOK_URL_TOKEN else 'NÃO CONFIGURADO'}")
     print(f"Client Token: {'Configurado' if EXPECTED_CLIENT_TOKEN else 'NÃO CONFIGURADO'}")
     print(f"Números bloqueados: {len(BLOQUEAR_NUMEROS)}")
+    print(f"Z-API Token: {ZAPI_TOKEN}")
     app.run(host='0.0.0.0', port=10000)
